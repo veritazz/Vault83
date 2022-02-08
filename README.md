@@ -10,8 +10,10 @@ http://docs.platformio.org/en/latest/installation.html#installation-methods
 
 Clone the following two repositories into the *lib* directory:
 
+```
 https://github.com/veritazz/Arduboy2.git (branch fps_development)
 https://github.com/veritazz/ATMlib2.git (branch veritazz-wip)
+```
 
 After that the datafile for the flash memory should be created. The script that creates it will
 also create .c and .h files that are required for compilation. As long as assets like graphics,
