@@ -1,0 +1,4465 @@
+#include <math.h>
+
+#include "Engine.h"
+#include "tables.h"
+#include "maps.h"
+#include "flashoffsets.h"
+#include "leveldata.h"
+
+#include "drawing.h"
+#include "map.h"
+
+#ifdef AUDIO
+#include <ATMlib2.h>
+#include "song.h"
+
+struct atm_sfx_state sfx_state;
+
+static const uint8_t * const mapSounds[] PROGMEM = {
+	(const uint8_t *)&sfx2, /* door opening */
+	(const uint8_t *)&sfx3, /* door closing */
+	(const uint8_t *)&sfx4, /* door locked */
+	(const uint8_t *)&sfx5, /* door closed */
+	(const uint8_t *)&sfx6, /* trigger */
+};
+#endif
+
+#ifdef CONFIG_ASM_OPTIMIZATIONS
+uint24_t levelFlashOffset;
+#endif
+
+/*
+ * pretend this variable is the GPIOR0 register (free to use) to gain some speed,
+ * not really required but fun to use (saves minimal PROGMEM)
+ */
+static uint8_t ray __attribute__((io(0x3e)));
+
+/*
+ * complete engine state in one struct so on retry we can just
+ * wipe it with a single memset
+ */
+struct engineState es;
+
+//#define RAY32_DEBUG
+
+#define STRINGIFY(x) #x
+#define STRING(x) STRINGIFY(x)
+#define LINE_LABEL(name) #name "_" STRING(__LINE__) ":\n"
+#define ASM_LABEL(name) asm volatile(LINE_LABEL(name))
+
+/*
+ * precalculated shifts of a byte with 1 bit set, must be aligned to an 8 byte boundary
+ * so some "adc" calls can be saved in assembly code
+ */
+extern "C" const uint8_t bitshift_left[] __attribute__ ((aligned (8))) = {
+  1, 2, 4, 8, 16, 32, 64, 128
+};
+
+static uint8_t minWallDistance = PLAYERS_MIN_WALL_DISTANCE;
+static uint16_t rayAngle;
+
+#define ARRAY_SIZE(a)	(sizeof((a)) / sizeof((a)[0]))
+
+#define GNOMESORT(a, s, v, _dt) \
+{ \
+	uint8_t pos = 0; \
+	while (pos < (s)) { \
+		if (pos == 0 || (v)((a)[pos], (a)[pos - 1])) { \
+			pos++; \
+		} else { \
+			_dt tmp = (a)[pos]; \
+			(a)[pos] = (a)[pos - 1]; \
+			(a)[pos - 1] = tmp; \
+			pos--; \
+		} \
+	} \
+}
+
+Engine::Engine(Arduboy2Ex &a)
+{
+	arduboy = &a;
+}
+
+#define STATUS_KEY                    0
+#define STATUS_WEAPON1                1
+#define STATUS_WEAPON2                2
+#define STATUS_WEAPON3                3
+#define STATUS_AMMO                   4
+#define STATUS_HEALTH                 5
+#define STATUS_DOOR_REQUIRES_KEY      6
+#define STATUS_DOOR_REQUIRES_TRIGGER  7
+#define STATUS_QUEST_PENDING          8
+
+/*
+ * weapon damage
+ */
+static const uint8_t weaponDamage[NR_OF_WEAPONS] PROGMEM = {
+	 1, /* weapon 1 */
+	 3, /* weapon 2 */
+	 5, /* weapon 3 */
+	15, /* weapon 4 */
+};
+
+uint8_t Engine::simulateButtons(uint8_t buttons)
+{
+	if (es.killedBySprite) {
+		struct lightweight_sprite *s = &es.ld.lw_sprites[es.killedBySprite - 1];
+		struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
+		es.ld.playerAngle = hw_s->spriteAngle;
+	}
+	return 0;
+}
+
+uint8_t Engine::pressed(uint8_t buttons)
+{
+	if (simulation)
+		return simulateButtons(buttons);
+
+	return arduboy->pressed(buttons);
+}
+
+void Engine::init(void)
+{
+	/* reset engine */
+	memset(&es, 0, sizeof(es));
+
+	/* set player's initial position, weapons, health and the like */
+	es.playerHealth = PLAYERS_INITIAL_HEALTH;
+	es.playerWeapons = HAS_WEAPON_1;   // weapon 1 is always there, ammo unlimited
+	es.playerAmmo[0] = 99;
+	es.currentDamageCategory = 1;      // by default only the player will take damage, 0 = god mode
+
+	es.vMoveDirection = -8;            // head movement direction ( - = up, + = down), signed Q3.4
+	es.itemDanceDir = -1;              // start by moving the items down
+
+	/*
+	 * load all init data in one shot
+	 */
+	uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * currentLevel);
+
+	Cart::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT), (uint8_t *)&es.ld, (size_t)sizeof(struct level_initdata));
+
+	es.ld.playerAngle = 59;
+
+#ifndef CONFIG_ASM_OPTIMIZATIONS
+	levelFlashOffset = levelOffset;
+#else
+	levelFlashOffset = ((uint24_t)Cart::programDataPage << 8) + levelOffset;
+#endif
+
+
+	/* by default no quest is active */
+	activeQuestId = QUEST_NOT_ACTIVE;
+
+	/* initial setup */
+	update();
+}
+
+/*
+ * by inlining the below function a few more cycles can be saved
+ * at the expense of PROGMEM
+ *
+ * replaces: dividend / 64
+ */
+uint16_t Engine::divU24ByBlocksize(uint32_t dividend)
+{
+#ifdef ARDUINO_ARCH_AVR
+	uint16_t result;
+
+	/*
+	* 2 MSBs need to be zero for this to work. The unsigned 24 bit
+	* value will be divided by 64. Usually a right shift by 6 but
+	* on the Atmega32u these shifts are very CPU intense as there
+	* is no barrel shifter.
+	*
+	* Assume each letter is a byte of the 24 bit value, e.g.
+	* A = bits[ 7: 0]
+	* B = bits[15: 8]
+	* C = bits[23:16]
+	*
+	* The algorithm rotates each byte 2 bits to the left through
+	* the carry bit. The result of the division is in CB and needs
+	* to be moved to BA.
+	*
+	* CBA
+	* rol A
+	* rol B
+	* rol C
+	* repeat above rotates
+	* result in CB
+	*
+	* This is what it looks in assembly (with cycle counts)
+	*
+	* This is the function:
+	* 1    3b58:	ab 01       	movw	r20, r22
+	* 1    3b5a:	bc 01       	movw	r22, r24
+	* 1    3b5c:	44 1f       	adc	r20, r20
+	* 1    3b5e:	55 1f       	adc	r21, r21
+	* 1    3b60:	66 1f       	adc	r22, r22
+	* 1    3b62:	44 1f       	adc	r20, r20
+	* 1    3b64:	55 1f       	adc	r21, r21
+	* 1    3b66:	66 1f       	adc	r22, r22
+	* 1    3b68:	85 2f       	mov	r24, r21
+	* 1    3b6a:	96 2f       	mov	r25, r22
+	* 4    3b6c:	08 95       	ret
+	*
+	* This is the call to the function:
+	* 1    603a:	bc 01       	movw	r22, r24
+	* 1    603c:	80 e0       	ldi	r24, 0x00	; 0
+	* 1    603e:	90 e0       	ldi	r25, 0x00	; 0
+	* 4    6040:	0e 94 ac 1d 	call	0x3b58	; 0x3b58 <_ZN6Engine17divU24ByBlocksizeEm.constprop.44>
+	*
+	* Overall 21 cycles (32 bytes)
+	*
+	* This is the code generated when just shifting a 24bit (32bit) value:
+	*
+	* 1    6020:	1b 01       	movw	r2, r22
+	* 1    6022:	2c 01       	movw	r4, r24
+	* 1    6024:	86 e0       	ldi	r24, 0x06	; 6
+	* 1    6026:	56 94       	lsr	r5
+	* 1    6028:	47 94       	ror	r4
+	* 1    602a:	37 94       	ror	r3
+	* 1    602c:	27 94       	ror	r2
+	* 1    602e:	8a 95       	dec	r24
+	* 2    6030:	d1 f7       	brne	.-12     	; 0x6026 <loopto+0x1792>
+	*
+	* Overall (3 + 5 * 7 + 6) = 44 cycles (18 bytes)
+	*
+	* Saved 23cycles for each division by 64
+	*/
+	asm volatile (" rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " rol %C[dividend]\n"
+		      " rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " rol %C[dividend]\n"
+		      " mov %A[result], %B[dividend]\n"
+		      " mov %B[result], %C[dividend]\n"
+			: [result] "=r" (result), /* output */
+			  [dividend] "+r" (dividend)
+			:
+			: /* clobber */);
+	return result;
+#else
+	return dividend / BLOCK_SIZE;
+#endif
+}
+
+// cacheRow ror, zero ror, [cacherow, zero]
+uint16_t Engine::fastMul128(uint8_t value)
+{
+#ifdef ARDUINO_ARCH_AVR
+	uint16_t result;
+	asm volatile (" lsr %A[value]\n"
+		      " mov %A[result], __zero_reg__\n"
+		      " ror %A[result]\n"
+		      " mov %B[result], %A[value]\n"
+			: [result] "=r" (result), /* output */
+			  [value] "+r" (value)
+			:
+			: /* clobber */);
+	return result;
+#else
+	return ((uint16_t)value * 128);
+#endif
+}
+
+
+uint8_t Engine::divU16ByBlocksize(uint16_t dividend)
+{
+#ifdef ARDUINO_ARCH_AVR
+	uint8_t result;
+	asm volatile (" rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " mov %A[result], %B[dividend]\n"
+			: [result] "=r" (result), /* output */
+			  [dividend] "+r" (dividend)
+			:
+			: /* clobber */);
+	return result;
+#else
+	return dividend / BLOCK_SIZE;
+#endif
+}
+
+int16_t Engine::divS24ByBlocksize(int32_t dividend)
+{
+#ifdef ARDUINO_ARCH_AVR
+	int16_t result;
+	asm volatile (" rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " rol %C[dividend]\n"
+		      " rol %A[dividend]\n"
+		      " rol %B[dividend]\n"
+		      " rol %C[dividend]\n"
+		      " mov %A[result], %B[dividend]\n"
+		      " mov %B[result], %C[dividend]\n"
+			: [result] "=r" (result), /* output */
+			  [dividend] "+r" (dividend)
+			:
+			: /* clobber */);
+	return result;
+#else
+	return dividend / BLOCK_SIZE;
+#endif
+}
+
+/*
+ * max dividend value is 127,
+ * not used but wanted to keep it because it looks nice
+ */
+uint8_t Engine::divU8By8(uint8_t dividend)
+{
+#ifdef ARDUINO_ARCH_AVR
+	asm volatile (" lsl %[dividend]\n"
+		      " andi %[dividend], 0xf\n"
+		      " swap %[dividend]\n"
+			: [dividend] "+r" (dividend) /* output */
+			:
+			: /* clobber */);
+	return dividend;
+#else
+	return (dividend / 8);
+#endif
+}
+
+/*
+ * can be used to create flip images
+ */
+uint8_t Engine::bitreverseU8(uint8_t byte)
+{
+	uint8_t result = byte;
+
+	result = ((result >> 1) & 0x55) | ((result << 1) & 0xaa);
+	result = ((result >> 2) & 0x33) | ((result << 2) & 0xcc);
+#ifdef ARDUINO_ARCH_AVR
+	asm volatile (" swap %[result]\n"
+		      : [result] "+r" (result) /* output */
+		      : /* input */
+		      : /* clobber */);
+#else
+	result = ((result >> 4) & 0x0f) | ((result << 4) & 0xf0);
+#endif
+	return result;
+}
+
+/* TODO this is clumsy just because "door" is needed for activateDoor,
+ * maybe just store the doorId in the struct
+ */
+void Engine::findAndActivateDoor(void)
+{
+	struct door *d = &es.ld.doors[0];
+	for (uint8_t door = 0; door < MAX_DOORS; door++) {
+		if (d == es.cd) {
+			activateDoor(d, door);
+			/* done */
+			break;
+		}
+		d++;
+	}
+}
+
+void Engine::activateDoor(struct door *d, uint8_t door)
+{
+	/* check if the player needs a key to open this door */
+	if (d->flags & DOOR_FLAG_LOCKED && es.playerKeys == 0) {
+		/* tell the player to search for a key */
+		setStatusMessage(STATUS_DOOR_REQUIRES_KEY);
+
+		/* play door locked effect */
+		startAudioEffect(AUDIO_EFFECT_ID_MAP, 2);
+
+	} else if (d->flags & DOOR_FLAG_TRIGGER) {
+		/* tell the player to search for a trigger */
+		setStatusMessage(STATUS_DOOR_REQUIRES_TRIGGER);
+
+		/* play door locked effect */
+		startAudioEffect(AUDIO_EFFECT_ID_MAP, 2);
+
+	} else if (d->state == DOOR_CLOSED || d->state == DOOR_CLOSING) {
+		/* if door is closed, open it */
+		if (d->flags & DOOR_FLAG_LOCKED) {
+			es.playerKeys--; /* player now has one key less */
+			d->flags &= ~DOOR_FLAG_LOCKED; /* clear lock */
+		}
+
+		if (d->state == DOOR_CLOSED) {
+			es.activeDoors[es.nrOfActiveDoors++] = door;
+		}
+
+		d->state = DOOR_OPENING;
+		/*
+		 * this variable will be used to detect if the
+		 * doors have reached their maximum opening
+		 * position
+		 */
+		d->openTimeout = BLOCK_SIZE - 1;
+
+		/* play door open effect */
+		startAudioEffect(AUDIO_EFFECT_ID_MAP, 0);
+
+	} else if (d->state == DOOR_OPEN || d->state == DOOR_OPENING) {
+		/* if door is open, close it */
+		if (d->state == DOOR_OPEN)
+			d->openTimeout = 0;
+		d->state = DOOR_CLOSING;
+
+		/* play door closing effect */
+		startAudioEffect(AUDIO_EFFECT_ID_MAP, 1);
+	}
+}
+
+void Engine::activateTrigger(uint8_t mapX, uint8_t mapY)
+{
+	struct trigger *t = &es.ld.triggers[0];
+
+	for (uint8_t trigger = 0; trigger < MAX_TRIGGERS; trigger++) {
+		if (t->timeout == 0 && t->mapX == mapX && t->mapY == mapY) {
+			/* reset timeout */
+			t->timeout = TRIGGER_TIMEOUT;
+
+			uint8_t old_state = t->flags & TRIGGER_FLAG_STATE;
+
+			/* if of type switch, toggle state */
+			if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH) {
+				/* it is a switch, so toggle state */
+				t->flags ^= TRIGGER_STATE_ON;
+			} else {
+				/* just switch it on */
+				t->flags |= TRIGGER_STATE_ON;
+			}
+
+			/* now activate/deactivate object */
+			if (old_state != (t->flags & TRIGGER_FLAG_STATE)) {
+
+				/* play trigger effect */
+				startAudioEffect(AUDIO_EFFECT_ID_MAP, 4);
+
+				uint8_t object = t->flags & TRIGGER_FLAG_OBJ;
+				if (object == TRIGGER_OBJ_DOOR) {
+					/* door */
+					struct door *d = &es.ld.doors[t->obj_id];
+					/* clear trigger flag */
+					d->flags &= ~DOOR_FLAG_TRIGGER;
+					activateDoor(d, t->obj_id);
+					/*
+					 * if the trigger is of type switch, reenable the trigger flag
+					 * of the door, so the player needs to be fast enough to pass
+					 * the door while it is open. Otherwise it closes again and the
+					 * player needs to trigger the switch again
+					 */
+					if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH) {
+						/* set trigger flag */
+						d->flags |= DOOR_FLAG_TRIGGER;
+					}
+				} else if (object == TRIGGER_OBJ_VMW) {
+					/* moving wall */
+					struct movingWall *mw = &es.ld.movingWalls[t->obj_id];
+					/* toggle active flag */
+					mw->flags ^= VMW_FLAG_ACTIVE;
+				} else if (object == TRIGGER_OBJ_DIALOG) {
+					/* set dialog system event */
+					setSystemEvent(EVENT_DIALOG, t->obj_id);
+				} else if (object == TRIGGER_OBJ_QUEST) {
+					/*
+					 * check if player does already has a quest or if
+					 * the new quest is the current quest
+					 */
+					if (activeQuestId == QUEST_NOT_ACTIVE || activeQuestId == t->obj_id) {
+						/* set quest system event for the new quest */
+						setSystemEvent(EVENT_QUEST, t->obj_id);
+					} else {
+						/*
+						 * print message that the player is busy with
+						 * a quest
+						 */
+						setStatusMessage(STATUS_QUEST_PENDING);
+					}
+				} else if (object == TRIGGER_OBJ_NEXT_LEVEL) {
+					/*
+					 * set next level event
+					 *   obj_id  = 0xff: next level from current one
+					 *   obj_id != 0xff: level number given in obj_id
+					 */
+					setSystemEvent(EVENT_PLAYER_NEXT_LEVEL, t->obj_id);
+				}
+			}
+			break;
+		}
+		t++;
+	}
+}
+
+void Engine::setStatusMessage(uint8_t msg_id)
+{
+	es.statusMessage.text = messageStrings_flashoffset + (msg_id * messageStringsAlignment);
+	es.statusMessage.timeout = 120; /* in frames */
+}
+
+/*
+ * Own implementation of drawBitmap to save some PROGMEM by reusing existing
+ * functions from the main rendering loop. Probably slower than the original
+ * but this function is only used rarely so speed does not matter.
+ */
+void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, uint8_t h, uint8_t color)
+{
+	Cart::seekData(bitmap);
+
+	unsigned char *buffer = arduboy->getBuffer() + (x * HEIGHT_BYTES);
+
+	/* check if copying starts at a multiple of 8 boundary */
+	if ((y % 8) == 0) {
+		/* for every column of the image */
+		for (uint8_t cx = 0; cx < w; cx++) {
+
+			uint8_t toDraw = h;
+			unsigned char *b = buffer + (y / 8);
+			buffer += HEIGHT_BYTES;
+			for (uint8_t ph = 0; ph < ((h + 7) / 8); ph++) {
+				uint8_t pixels = SPDR;
+				SPDR = 0;
+
+				uint8_t m;
+				if (toDraw < 8) {
+					m = 0xff >> toDraw;
+				} else {
+					m = 0xff;
+					toDraw -= 8;
+				}
+
+				*b &= ~m;
+				*b |= pixels;
+				b++;
+			}
+		}
+	} else {
+		// TODO try same algorithm as for screen transition 2
+		/* for every column of the image */
+		for (uint8_t cx = 0; cx < w; cx++) {
+
+			uint8_t pixels;
+			for (uint8_t ph = 0; ph < h; ph++) {
+				if ((ph % 8) == 0) {
+					pixels = SPDR;
+					SPDR = 0;
+				}
+				unsigned char *b = buffer + ((y + ph) / 8);
+				const uint8_t shift = (y + ph) % 8;
+				const uint8_t texShift = bitshift_left[ph % 8];
+				const uint8_t color = pixels & texShift;
+
+				const uint8_t m = bitshift_left[shift];
+				if (color)
+					*b |= m;
+				else
+					*b &= ~m;
+			}
+			buffer += HEIGHT_BYTES;
+		}
+	}
+	Cart::readEnd();
+}
+
+uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
+{
+	char c;
+	uint8_t v;
+	/* calculate buffer address */
+	unsigned char *buffer = arduboy->getBuffer() + page + (x * HEIGHT_BYTES);
+
+	/*
+	 * print status string when the player collects items or triggers
+	 * some events.
+	 */
+	for (;;) {
+		/* TODO combination of both for faster single byte reads */
+		/* speed it up by storing the string as image */
+		Cart::seekData(message++);
+		c = Cart::readEnd();
+		if (!c)
+			break;
+
+		if (c == ' ')
+			c = 36;
+		else if (c < 'a')
+			c -= '0';
+		else
+			c -= 'W';
+
+		Cart::seekData(characters_3x4_flashoffset + (c * 3));
+
+		v = Cart::readPendingUInt8();
+		buffer[0] = v >> 1;
+		v = Cart::readPendingUInt8();
+		buffer[HEIGHT_BYTES * 1] = v >> 1;
+		v = Cart::readEnd();
+		buffer[HEIGHT_BYTES * 2] = v >> 1;
+		buffer[HEIGHT_BYTES * 3] = 0;
+
+		buffer += HEIGHT_BYTES * 4;
+
+		x += 4;
+	}
+
+	return x;
+}
+
+void Engine::drawNumber(uint8_t x, uint8_t y, uint8_t number)
+{
+	uint8_t digit;
+	uint8_t v;
+	uint8_t divider = 100;
+	/* calculate buffer address */
+	unsigned char *buffer = arduboy->getBuffer() + (y / 8) + (x * HEIGHT_BYTES);
+
+	while (divider) {
+		digit = number / divider;
+		Cart::seekData(characters_3x4_flashoffset + (digit * 3));
+		v = Cart::readPendingUInt8();
+
+		buffer[0] |= v;
+		v = Cart::readPendingUInt8();
+		buffer[8] |= v;
+		v = Cart::readEnd();
+		buffer[16] |= v;
+
+		buffer += 32;
+
+		number %= divider;
+		divider /= 10;
+	}
+}
+
+void Engine::enemyTurnToPlayer(struct lightweight_sprite *s)
+{
+// FIXME
+#if 0
+	// TODO this is wrong when the player is not facing the sprite
+	s->viewAngle = s->spriteAngle - 180;
+	if (s->viewAngle < 0)
+		s->viewAngle += 360;
+#endif
+}
+
+uint8_t Engine::enemyStateIdle(struct lightweight_sprite *s, uint8_t speed)
+{
+	uint8_t state = ENEMY_IDLE;
+
+	if (s->distance < 256) {
+		state = ENEMY_FOLLOW;
+		enemyTurnToPlayer(s);
+	}
+	return state;
+}
+
+uint8_t Engine::enemyStateAttack(struct lightweight_sprite *s, uint8_t speed)
+{
+	uint8_t state = ENEMY_ATTACK;
+
+	if (s->distance > 128) {
+		state = ENEMY_FOLLOW;
+		enemyTurnToPlayer(s);
+	} else {
+		/*
+		 * if cooldown has expired and attack threshold is reached
+		 * the sprite can do damage
+		 */
+		if (attackCoolDown == 0) {
+			if (attackLevel > ENEMY_ATTACK_THRESHOLD) {
+				/* Do dummy move with range attack step (range - minWallDistance)
+				 * to check if enemy has free line of sight, if not, do random
+				 * moves.
+				 * This is not an exact but cheap way.
+				 */
+
+				/* move, if no path -> random moves */
+				uint16_t x = s->x, xo = s->x;
+				uint16_t y = s->y, yo = s->y;
+
+				/* set movement distance to attack distance - minWallDistance */
+				uint8_t distance = 120;
+				/* disable damage at all, god mode */
+				es.currentDamageCategory = 0;
+				/* reduce minWallDistance to get more agility for moves */
+				minWallDistance = 8;
+				speed = 8;
+
+				for (;;) {
+
+					if (distance < 8)
+						speed = distance;
+
+					/* try to move */
+					move(s->viewAngle, 1, &x, &y, speed);
+
+					/*
+					 * if x and y are unchanged we could not move directly
+					 * and thus are not allowed to attack
+					 */
+					if (x == xo && y == yo)
+						break;
+
+					distance -= speed;
+
+					if (distance == 0)
+						break;
+
+					xo = x;
+					yo = y;
+				}
+
+				/* set minWallDistance back to normal */
+				minWallDistance = PLAYERS_MIN_WALL_DISTANCE;
+				/* only the player will take damage */
+				es.currentDamageCategory = 1;
+
+				/* if distance is not zero we could not directly move */
+				if (distance != 0) {
+					/* just do random moves */
+					state = ENEMY_RANDOM_MOVE;
+				} else {
+					/* inflict damage on the player */
+					es.playerHealth--;
+					es.blinkScreen = 1;
+
+					/* remember who killed the player */
+					if (es.playerHealth == 0)
+						es.killedBySprite = es.visibleSpriteList[s->hwid] + 1;
+				}
+			}
+		}
+	}
+	return state;
+}
+
+uint8_t Engine::enemyStateFollow(struct lightweight_sprite *s, uint8_t speed)
+{
+	uint8_t state = ENEMY_FOLLOW;
+
+	/* TODO should use a per enemy type attack distance */
+	if (s->distance < 96) {
+		state = ENEMY_ATTACK;
+	} else if (s->distance > 384) {
+		state = ENEMY_RANDOM_MOVE;
+	} else {
+		/* focus every 64 frames */
+		if ((es.frame % 64) == 0)
+			enemyTurnToPlayer(s);
+
+		moveSprite(s, speed);
+
+		/* only the player will take damage */
+		es.currentDamageCategory = 1;
+	}
+	return state;
+}
+
+uint8_t Engine::enemyStateRandomMove(struct lightweight_sprite *s, uint8_t speed)
+{
+	uint8_t state = ENEMY_RANDOM_MOVE;
+
+	if (s->distance < 256) {
+		state = ENEMY_FOLLOW;
+	} else {
+		moveSprite(s, speed);
+
+		/* ca. every 4 frames turn 180 degrees */
+		if ((es.frame % FPS) == 0) {
+			s->viewAngle += 90;
+			if (s->viewAngle >= 360)
+				s->viewAngle -= 360;
+		}
+	}
+	return state;
+}
+
+void Engine::doDamageToSprite(struct lightweight_sprite *s, uint8_t damage)
+{
+	/* inflict enemy damage */
+	if (s->health <= damage) {
+		/* TODO sprite death animation */
+		s->flags |= S_INACTIVE;
+	} else {
+		s->health -= damage;
+	}
+}
+
+void Engine::checkAndDoDamageToSpriteByObjects(struct lightweight_sprite *s)
+{
+	if (es.doDamageFlags & es.currentDamageCategory) {
+		es.doDamageFlags &= ~2;
+		doDamageToSprite(s, 10);
+	}
+}
+
+uint8_t Engine::moveSprite(struct lightweight_sprite *s, uint8_t speed)
+{
+	uint8_t ret;
+
+	/* only enemies will take damage */
+	es.currentDamageCategory = 2;
+
+	/* move, if no path -> random moves */
+	ret = move((uint16_t)s->viewAngle, 1, &s->x, &s->y, speed);
+
+	/* inflict damage to the sprite if necessary */
+	checkAndDoDamageToSpriteByObjects(s);
+
+	/* only the player will take damage */
+	es.currentDamageCategory = 1;
+
+	return ret;
+}
+
+/* translates an index to a block side
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ */
+static const uint8_t xlateBlockHitToSide[] = {1, 0, 1, 2, 3, 2, 3, 0};
+
+/*
+ * index into texture_ptrs for each side of the block
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ *
+ * position 0: left
+ * position 1: up
+ * position 2: right
+ * position 3: down
+ */
+static uint8_t blockTextures[WALL_BLOCKS * 4] = {
+	 11,  11,  11,  11, // W0
+	  0,   1,   2,   3, // W1
+	  5,   6,   6,   0, // W2
+	  0,   0,   0,   0, // W3
+	  0,   0,   0,   0, // W4
+	  0,   0,   0,   0, // W5
+	  0,   0,   0,   0, // W6
+	  1,   1,   1,   1, // W7
+	  9,   0,   9,   0, // W8
+	  9,   0,   0,   0, // W9
+	  0,   0,   9,   0, // W10
+	  0,   9,   0,   9, // W11
+	  0,   9,   0,   0, // W12
+	  0,   0,   0,   9, // W13
+	  7,   7,   7,   7, // W14
+	  0,   1,   2,   3, // W15
+	  0,   1,   2,   3, // W16
+	  0,   1,   2,   3, // W17
+	  0,   1,   2,   3, // W18
+	  0,   1,   2,   3, // W19
+	  0,   1,   2,   3, // W20
+	  0,   1,   2,   3, // W21
+	  0,   1,   2,   3, // W22
+	  0,   1,   2,   3, // W23
+	  0,   1,   2,   3, // W24
+	  0,   1,   2,   3, // W25
+	  0,   1,   2,   3, // W26
+	  0,   1,   2,   3, // W27
+	  0,   1,   2,   3, // W28
+	  0,   1,   2,   3, // W29
+	  0,   1,   2,   3, // W30
+};
+
+/*
+ * effect ids applied to textures before beeing drawn on the screen
+ * maximum effects are 16 each for the texture and the texture index
+ *
+ * bit[7:4] effect id on the texture index
+ * bit[3:0] effect id on the texture data
+ *
+ */
+static uint8_t textureEffects[WALL_BLOCKS] = {
+	0,                     /* W0 */
+	0 | 1,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+	0,
+};
+
+/*
+ * special functions for block texture index effects, runs during update
+ */
+
+/*
+ * rotate positions to the left (counter clockwise)
+ * e.g. 0->1, 1->2, 2->3, 3->0
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ */
+void Engine::texturesRotateLeft(uint8_t offset)
+{
+	uint8_t tmp = blockTextures[offset + 0];
+
+	blockTextures[offset + 0] = blockTextures[offset + 1];
+	blockTextures[offset + 1] = blockTextures[offset + 2];
+	blockTextures[offset + 2] = blockTextures[offset + 3];
+	blockTextures[offset + 3] = tmp;
+}
+
+/*
+ * rotate positions to the right (clockwise)
+ * e.g. 0->3, 1->0, 2->1, 3->2
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ */
+void Engine::texturesRotateRight(uint8_t offset)
+{
+	uint8_t tmp = blockTextures[offset + 0];
+
+	blockTextures[offset + 0] = blockTextures[offset + 3];
+	blockTextures[offset + 3] = blockTextures[offset + 2];
+	blockTextures[offset + 2] = blockTextures[offset + 1];
+	blockTextures[offset + 1] = tmp;
+}
+
+/*
+ * exchange positions 1 and 3
+ * e.g. 1->3, 3->1
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ */
+void Engine::texturesExchangeUpDown(uint8_t offset)
+{
+	uint8_t tmp = blockTextures[offset + 3];
+
+	blockTextures[offset + 3] = blockTextures[offset + 1];
+	blockTextures[offset + 1] = tmp;
+}
+
+/*
+ * exchange positions 0 and 2
+ * e.g. 0->2, 2->0
+ *
+ *       1
+ *     +---+
+ *   0 |   | 2
+ *     +---+
+ *       3
+ */
+void Engine::texturesExchangeLeftRight(uint8_t offset)
+{
+	uint8_t tmp = blockTextures[offset + 0];
+
+	blockTextures[offset + 0] = blockTextures[offset + 2];
+	blockTextures[offset + 2] = tmp;
+}
+
+/*
+ * special functions for texture data manipulations
+ */
+void Engine::textureEffectNone(const uint24_t p, uint8_t texX)
+{
+	Cart::seekData(p + texX);
+	es.texColumn[4] = Cart::readPendingUInt8();
+	es.texColumn[5] = Cart::readPendingUInt8();
+	es.texColumn[6] = Cart::readPendingUInt8();
+	es.texColumn[7] = Cart::readEnd();
+}
+
+void Engine::textureEffectVFlip(const uint24_t p, uint8_t texX)
+{
+}
+
+void Engine::textureEffectHFlip(const uint24_t p, uint8_t texX)
+{
+}
+
+void Engine::textureEffectInvert(const uint24_t p, uint8_t texX)
+{
+	Cart::seekData(p + texX);
+	es.texColumn[4] = ~Cart::readPendingUInt8();
+	es.texColumn[5] = ~Cart::readPendingUInt8();
+	es.texColumn[6] = ~Cart::readPendingUInt8();
+	es.texColumn[7] = ~Cart::readEnd();
+}
+
+void Engine::textureEffectRotateLeft(const uint24_t p, uint8_t texX)
+{
+	texX = (texX + es.textureRotateLeftOffset) % TEXTURE_SIZE;
+
+	textureEffectNone(p, texX);
+}
+
+
+/*
+ * movement speed of enemies in pixel
+ */
+static const uint8_t enemyMovementSpeeds [] PROGMEM = {
+	ENEMY0_MOVEMENT_SPEED, /* E_TYPE0  */
+	ENEMY1_MOVEMENT_SPEED, /* E_TYPE1 */
+	ENEMY2_MOVEMENT_SPEED, /* E_TYPE2 */
+	ENEMY3_MOVEMENT_SPEED, /* E_TYPE3 */
+};
+
+void Engine::updateSpecialWalls(void)
+{
+	/* update shooting walls */
+	if (shootingWallCoolDown == 0)
+		shootingWallCoolDown = SHOOTING_WALL_COOLDOWN;
+	else
+		shootingWallCoolDown--;
+
+	if (shootingWallCoolDown == 0) {
+		Cart::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
+		uint8_t maxSpecialWalls = Cart::readPendingUInt8();
+
+		for (uint8_t p = MAX_SPRITES - MAX_PROJECTILES; p < (MAX_SPRITES - MAX_PROJECTILES + maxSpecialWalls); p++) {
+			struct lightweight_sprite *s = &es.ld.lw_sprites[p];
+			if (!IS_INACTIVE(s->flags)) {
+				/* TODO what a waste, maybe seek? */
+				Cart::readPendingUInt8();
+				Cart::readPendingUInt8();
+				Cart::readPendingUInt8();
+				continue;
+			}
+
+			/* set active and type projectile */
+			s->x = Cart::readPendingUInt8() * 64 - 16;
+			s->y = Cart::readPendingUInt8() * 64 + 32;
+			s->flags = Cart::readPendingUInt8();
+			s->distance = 0xffff;
+			s->viewAngle = ((s->flags >> 2) & 0x3) * 90;
+			s->flags &= F_MASK;
+			break;
+		}
+		Cart::readEnd();
+	}
+}
+
+void Engine::updateTextureEffects(void)
+{
+	/*
+	 * run texture index effects
+	 */
+#if 0
+	/*
+	 * here its possible to change the effects dynamically, not sure if this is
+	 * useful for anybody
+	 */
+	if ((es.frame % FPS) == 0) {
+		textureEffects[0]++;
+		textureEffects[0] &= 0xf1;
+	}
+#endif
+
+	/* every X run the effects */
+	if ((es.frame % (FPS / 8)) == 0) {
+
+		/* update offsets for texture rotations */
+		es.textureRotateLeftOffset = ((es.textureRotateLeftOffset + TEXTURE_HEIGHT_BYTES) % TEXTURE_SIZE);
+		/*
+		 * run texture index effects for all blocks
+		 */
+		for (uint8_t blockSideEffects = 0; blockSideEffects < WALL_BLOCKS; blockSideEffects++) {
+			uint8_t effect = textureEffects[blockSideEffects] >> 4;
+			uint8_t offset = blockSideEffects * 4;
+
+			if (effect == 1)
+				texturesRotateLeft(offset);
+			else if (effect == 2)
+				texturesRotateRight(offset);
+			else if (effect == 3)
+				texturesExchangeUpDown(offset);
+			else if (effect == 4)
+				texturesExchangeLeftRight(offset);
+		}
+	}
+}
+
+void Engine::updateTriggers(void)
+{
+	/*
+	 * update triggers
+	 */
+	struct trigger *t = &es.ld.triggers[0];
+
+	for (uint8_t trigger = 0; trigger < MAX_TRIGGERS; trigger++) {
+
+		/* decrement timeout */
+		if (t->timeout) {
+			t->timeout--;
+			/* if it is a switch, toggle it back to original position */
+			if (t->timeout == 0 && ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH))
+				t->flags ^= TRIGGER_STATE_ON;
+		}
+		t++;
+	}
+}
+
+void Engine::updateDoors(void)
+{
+	/*
+	 * update doors
+	 */
+	uint8_t newNrOfActiveDoors = es.nrOfActiveDoors;
+	struct door *d = &es.ld.doors[es.activeDoors[0]];
+
+	for (uint8_t door = 0; door < es.nrOfActiveDoors; door++) {
+		if (d->state == DOOR_OPENING) {
+			d->offset += 1;
+			if (d->offset == BLOCK_SIZE - 1) {
+				/* door was fully opened */
+				d->state = DOOR_OPEN;
+				d->openTimeout = DOOR_OPEN_TIMEOUT;
+			} else if (d->offset == d->openTimeout) {
+				/* flaky, not completely opened, close right away */
+				d->state = DOOR_CLOSING;
+			}
+		} else if (d->state == DOOR_OPEN) {
+			if (d->openTimeout == 0) {
+				/* TODO this check is not accurate, e.g. if the player stands
+				 * close to the block border
+				 */
+				if (es.ld.playerMapX != d->mapX || es.ld.playerMapY != d->mapY) {
+					d->state = DOOR_CLOSING;
+					/* play door close effect */
+					startAudioEffect(AUDIO_EFFECT_ID_MAP, 3);
+				}
+			} else {
+				d->openTimeout -= 1;
+			}
+		} else if (d->state == DOOR_CLOSING) {
+			d->offset -= 1;
+			if (d->offset == 0) {
+				d->state = DOOR_CLOSED;
+				es.activeDoors[door] = 255;
+				newNrOfActiveDoors--;
+			}
+		}
+		d++;
+	}
+
+	/*
+	 * sort in ascending order so all inactive doors in the list (marked with
+	 * 255) will be moved to the end
+	 */
+	GNOMESORT(es.activeDoors, es.nrOfActiveDoors, compareGreaterOrEqual, uint8_t);
+
+	/*
+	 * Activate flaky doors (at least a few)
+	 *
+	 * if door is closed and a flaky one, then start opening it
+	 * if random number allows it
+	 */
+	uint8_t maxNrOfActiveFlakyDoors = MAX_NR_OF_FLAKY_DOORS_TO_ACTIVATE;
+	if ((es.randomNumber & 0x3) == 0) {
+		struct door *d = &es.ld.doors[0];
+		for (uint8_t door = 0; door < MAX_DOORS; door++) {
+			if (d->flags & DOOR_FLAG_FLAKY && d->state == DOOR_CLOSED) {
+				d->state = DOOR_OPENING;
+				/*
+				 * make sure to select a timeout value so the door never
+				 * fully opens (0 < openTimeout < 63)
+				 */
+				d->openTimeout = ((es.randomNumber + 0x3) & 0x3f) - 1;
+				es.activeDoors[newNrOfActiveDoors++] = door;
+				maxNrOfActiveFlakyDoors--;
+				/*
+				 * if we have reached the maximum number of opening doors
+				 * then stop here
+				 */
+				if (maxNrOfActiveFlakyDoors == 0)
+					break;
+			}
+			d++;
+		}
+	}
+	es.nrOfActiveDoors = newNrOfActiveDoors;
+}
+
+void Engine::update(void)
+{
+	/* reset system events */
+	resetSystemEvents();
+
+	if (es.itemDance == -4)
+		es.itemDanceDir = 1;
+	else if (es.itemDance == 4)
+		es.itemDanceDir = -1;
+
+	es.itemDance += es.itemDanceDir;
+
+	/* generate random number for hit/evade randomization */
+	/* random number from 0 - 63 */
+	es.randomNumber = rand() % 64;
+
+	/*
+	 * work on local copies as this generates more efficient
+	 * code for variable whos value gets changed due to some
+	 * operation (not just assignment)
+	 */
+	int8_t movementSpeedDuration = es.movementSpeedDuration;
+	/*
+	 * cool down movement, turning and head movement
+	 */
+	if (movementSpeedDuration > 0)
+		movementSpeedDuration -= 1;
+	else
+		es.direction = 0; /* stop movement */
+
+	int8_t turn = es.turn;
+
+	/* check if the player is still turning */
+	if (turn) {
+		if (turn > 0)
+			turn -= 0x4;
+		else
+			turn += 0x4;
+	}
+
+	int8_t vHeadPosition = es.vHeadPosition;
+	uint8_t vHeadPositionTimeout = es.vHeadPositionTimeout;
+
+	/* timeout the head displacement */
+	if (vHeadPositionTimeout == 0)
+		vHeadPosition = 0;
+	else
+		vHeadPositionTimeout -= 1;
+
+	/*
+	 * input handling
+	 */
+	uint8_t movementUpdate = 0;
+	if (pressed(UP_BUTTON)) {
+		if (es.direction != 1)
+			movementSpeedDuration = 0;
+		es.direction = 1;
+		movementUpdate = 1;
+	} else if (pressed(DOWN_BUTTON)) {
+		if (es.direction != 2)
+			movementSpeedDuration = 0;
+		es.direction = 2;
+		movementUpdate = 1;
+	} else if (pressed(LEFT_BUTTON)) {
+		if (pressed(A_BUTTON)) {
+			es.direction = 3;
+			movementUpdate = 1;
+		} else {
+			turn -= 12;
+		}
+	} else if (pressed(RIGHT_BUTTON)) {
+		if (pressed(A_BUTTON)) {
+			es.direction = 4;
+			movementUpdate = 1;
+		} else {
+			turn += 12;
+		}
+	}
+
+	if (movementUpdate) {
+		/* make sure movement is not too fast */
+		if (movementSpeedDuration < 14) {
+			/* extend the slide period */
+			movementSpeedDuration += 2;
+		}
+
+		if (vHeadPosition == 2 << 4) {
+			/* if the head is at the upper edge, change direction */
+			es.vMoveDirection = -8;
+		} else if (vHeadPosition == -2 << 4) {
+			/* if the head is at the lower edge, change direction */
+			es.vMoveDirection = 8;
+		}
+
+		/* update head position */
+		vHeadPosition += es.vMoveDirection;
+
+		/* set timeout at which the head jumps back to zero position */
+		vHeadPositionTimeout = 5;
+	}
+
+	es.vHeadPositionTimeout = vHeadPositionTimeout;
+	es.vHeadPosition = vHeadPosition;
+	es.movementSpeedDuration = movementSpeedDuration;
+
+	/* make sure we do not exceed the maximum turn rate */
+	if (turn > 64)
+		turn = 64;
+
+	if (turn < -64)
+		turn = -64;
+
+	es.turn = turn;
+
+	updateDoors();
+	updateTriggers();
+	updateSpecialWalls();
+
+	/*
+	 * update attack counters
+	 */
+	if (attackCoolDown == 0) {
+		attackCoolDown = FPS;
+		attackLevel += es.randomNumber;
+	} else {
+		attackCoolDown--;
+	}
+
+	updateTextureEffects();
+
+	/*
+	 * calculate players new view angle
+	 *
+	 * turning angle can be positive or negative (Q3.4 format)
+	 */
+	es.ld.playerAngle += es.turn / 16;
+	if (es.ld.playerAngle < 0)
+		es.ld.playerAngle += 360;
+	else if (es.ld.playerAngle >= 360)
+		es.ld.playerAngle -= 360;
+
+
+	/****************************************************
+	 *
+	 * calculate players weapon offset and cooldown
+	 *
+	 */
+	/*
+	 * set the countdown to double the field of view
+	 * so the weapon actually does not fire as this
+	 * countdown is decremented in the render loop which
+	 * loops over the field of view
+	 */
+	es.fireCountdown = FIELD_OF_VIEW * 2;
+	es.rectOffset = 0;
+	uint8_t weaponCoolDown = es.weaponCoolDown;
+
+	if (weaponCoolDown) {
+		/* weapon is still cooling down */
+		if (es.weaponVisibleOffset)
+			es.weaponVisibleOffset -= 4;
+			if (es.weaponVisibleOffset <= 16)
+				es.rectOffset = 16;
+			else
+				es.rectOffset = 32;
+		weaponCoolDown -= 1;
+	} else if (pressed(B_BUTTON)) {
+		/*
+		 * set the countdown to half the field of view
+		 * so the weapon fires in the middle of the screen
+		 */
+		es.fireCountdown = FIELD_OF_VIEW / 2;
+		/* check for ammo */
+		if (es.playerActiveWeapon != 0) {
+			if (es.playerAmmo[es.playerActiveWeapon] == 0) {
+				es.fireCountdown = FIELD_OF_VIEW * 2;
+				/* play out of ammo sound */
+				startAudioEffect(AUDIO_EFFECT_ID_WEAPON, es.playerActiveWeapon + NR_OF_WEAPONS);
+			} else {
+				es.playerAmmo[es.playerActiveWeapon] -= 1;
+			}
+		}
+		/* check if player can fire */
+		if (es.fireCountdown == (FIELD_OF_VIEW / 2)) {
+			es.weaponVisibleOffset = 4 << 4;
+			weaponCoolDown = 0 + es.weaponVisibleOffset / 4;
+			startAudioEffect(AUDIO_EFFECT_ID_WEAPON, es.playerActiveWeapon);
+		}
+	} else {
+		es.weaponVisibleOffset = es.vHeadPosition;
+	}
+	es.weaponCoolDown = weaponCoolDown;
+
+	/*
+	 * calculate tile in players view direction, the resulting tile can be
+	 * used to check if doors need to open or triggers are toggled
+	 */
+	if (pressed(A_BUTTON)) {
+		int16_t sinPlayerAngle = es.ld.playerAngle - 90;
+
+		if (sinPlayerAngle < 0)
+			sinPlayerAngle += 360;
+
+		uint16_t newPlayerX = es.ld.playerX + pgm_cosByX(es.ld.playerAngle) * BLOCK_SIZE / COSBYX;
+		uint16_t newPlayerY = es.ld.playerY + pgm_cosByX(sinPlayerAngle) * BLOCK_SIZE / COSBYX;
+
+		uint8_t blockX = divU16ByBlocksize(newPlayerX);
+		uint8_t blockY = divU16ByBlocksize(newPlayerY);
+
+		uint8_t actionTile = checkSolidBlockCheap(blockX, blockY);
+
+		/*
+		 * check if door needs to be activated
+		 *
+		 */
+		// TODO this is still effective in simulation mode
+		if (actionTile == H_DOOR && arduboy->justPressed(A_BUTTON)) {
+			/* open the door */
+			findAndActivateDoor();
+		} else if (actionTile == TRIGGER) {
+			/* trigger some event */
+			activateTrigger(blockX, blockY);
+		} else if (es.direction < 3) {
+			/*
+			 * TODO if player presses A to strafe the weapon will be changed
+			 */
+			if (es.weaponChangeCooldown == 0) {
+				/* change weapon if weapon is available */
+				uint8_t w = (es.playerActiveWeapon + 1) % NR_OF_WEAPONS;
+				for (; w < NR_OF_WEAPONS; w++) {
+					if (es.playerWeapons & bitshift_left[w])
+						break;
+				}
+				es.playerActiveWeapon = w % NR_OF_WEAPONS;
+				es.weaponChangeCooldown = FPS / 2;
+			}
+		}
+	}
+}
+
+void Engine::doDamageForVMW(struct movingWall *mw)
+{
+	/* do set damage flags based on the category */
+	if (mw->flags & VMW_FLAG_DAMAGE)
+		es.doDamageFlags |= es.currentDamageCategory;
+}
+
+/*
+ * return 0, all good
+ * return 1, sprite was pushed back
+ * return 2, sprite was pushed into a wall
+ */
+uint8_t Engine::movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct movingWall *mw, uint8_t flags)
+{
+	uint8_t ret = 0;
+	uint16_t xs, ys, xe, ye;
+
+	/*
+	 * FIXME
+	 * something is odd when wall speed is != 1, when player is walking in the same direction
+	 * the wall is moving it cannot reach its min distance, then when the wall changes direction
+	 * the min distance can be reached (e.g. the texture is suddenly closer)
+	 */
+
+	xs = mw->mapX * BLOCK_SIZE;
+	xe = xs + BLOCK_SIZE + minWallDistance;
+	if (xs < minWallDistance)
+		xs = 0;
+	else
+		xs -= minWallDistance;
+
+	ys = mw->mapY * BLOCK_SIZE + mw->offset;
+	ye = ys + BLOCK_SIZE + minWallDistance;
+	if (ys < minWallDistance)
+		ys = 0;
+	else
+		ys -= minWallDistance;
+
+	if (playerX > xs && playerX < xe && *playerY > ys && *playerY < ye) {
+
+		/* inside */
+		uint16_t movingAngle = flags & MW_DIRECTION_INC? 90: 270;
+		uint16_t nPlayerY;
+		uint8_t diffy;
+
+		if (movingAngle == 90) {
+			diffy = ye - *playerY;
+			nPlayerY = *playerY + diffy;
+		} else {
+			diffy = *playerY - ys;
+			nPlayerY = *playerY - diffy;
+		}
+
+		ret = move(movingAngle, 1, &playerX, playerY, diffy);
+		if (*playerY != nPlayerY) {
+			/* sprite/player died */
+			ret = 2;
+		}
+	}
+	return ret;
+}
+
+void Engine::updateMoveables(void)
+{
+	/*
+	 * update vertical moving walls
+	 */
+	for (uint8_t mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+		struct movingWall *mw = &es.ld.movingWalls[mwi];
+		uint8_t flags = mw->flags;
+
+		/* make sure wall is active */
+		if ((flags & VMW_FLAG_ACTIVE) == 0)
+			continue;
+
+		uint8_t speed = (mw->flags >> 1) & 0xf;
+
+		if (mw->flags & MW_DIRECTION_INC) {
+			/* moving down */
+			mw->offset += speed;
+			if (mw->offset == BLOCK_SIZE) {
+				mw->offset = 0;
+				mw->mapY++;
+			}
+			if (mw->mapY == mw->max) {
+				/* change direction */
+				mw->flags &= ~MW_DIRECTION_INC;
+				/* clear active flag if oneshot */
+				if (mw->flags & VMW_FLAG_ONESHOT)
+					mw->flags &= ~VMW_FLAG_ACTIVE;
+
+			}
+		} else {
+			/* moving up */
+			if (mw->offset == 0) {
+				mw->offset = BLOCK_SIZE;
+				mw->mapY--;
+			}
+
+			mw->offset -= speed;
+			if (mw->mapY == mw->min && mw->offset == 0) {
+				/* change direction */
+				mw->flags |= MW_DIRECTION_INC;
+				/* clear active flag if oneshot */
+				if (mw->flags & VMW_FLAG_ONESHOT)
+					mw->flags &= ~VMW_FLAG_ACTIVE;
+
+			}
+		}
+		/*
+		 * check if the player takes damage from a moving wall or
+		 * gets at least pushed back
+		 *
+		 * if MW_DIRECTION_INC the wall is moving down
+		 */
+		uint8_t ret = movingWallPushBack(es.ld.playerX, &es.ld.playerY, mw, flags);
+		switch (ret) {
+		case 1:
+			doDamageForVMW(mw);
+			break;
+		case 2:
+			/* player dead */
+			break;
+		}
+
+		/* now check for all sprites if they take damage or will be pushed
+		 * back */
+		for (uint8_t i = 0; i < MAX_SPRITES; i++) {
+			struct lightweight_sprite *s = &es.ld.lw_sprites[i];
+			if (IS_SIMPLE(s->flags) || IS_PROJECTILE(s->flags))
+				continue;
+
+			/* only sprites will take damage */
+			es.currentDamageCategory = 2;
+
+			uint8_t ret = movingWallPushBack(s->x, &s->y, mw, flags);
+			switch (ret) {
+			case 1:
+				/* inflict damage to the sprite */
+				checkAndDoDamageToSpriteByObjects(s);
+				break;
+			case 2:
+				/* sprite dead */
+				// TODO
+				break;
+			}
+
+			/* only the player will take damage */
+			es.currentDamageCategory = 1;
+		}
+	}
+}
+
+/*
+ * max tsize is 511
+ * min tsize is 2
+ */
+uint16_t Engine::arc_s8(int8_t value, const int8_t *table, uint16_t tsize)
+{
+	uint8_t size = tsize / 2;
+	uint16_t index = size - 1;
+	uint16_t previous_index = index;
+	int8_t tmp;
+
+	/* binary search for best match of value */
+	for (;;) {
+		if (index >= tsize) {
+			index = tsize - 1;
+			break;
+		}
+		if (index < 0) {
+			index = 0;
+			break;
+		}
+		tmp = pgm_read_int8(&table[index]);
+		if (tmp < value) {
+			previous_index = index;
+			index += (size + 1) / 2;
+		} else if (tmp > value) {
+			previous_index = index;
+			index -= (size + 1) / 2;
+		} else
+			break;
+		if (size < 2)
+			break;
+		size /= 2;
+	}
+
+	/* if difference of value and current index is smaller than the difference of the previous
+	 * index and value then return the current index, otherwise the previous index is returned */
+	if (abs(pgm_read_int8(&table[index]) - value) <= abs(tmp - value))
+		return index;
+
+	return previous_index;
+}
+
+/*
+ * max tsize is 255
+ * min tsize is 2
+ */
+// TODO could be the same code as for arc_s8 but for speed reasons some PROGMEM is wasted
+uint16_t Engine::arc_u16(uint16_t value, const uint16_t *table, uint8_t tsize)
+{
+	uint8_t size = tsize;
+	uint8_t index = size - 1;
+	uint8_t previous_index = index;
+	uint16_t tmp;
+
+	/* binary search for best match of value */
+	for (;;) {
+		size /= 2;
+		if (size == 0)
+			break;
+		if (index >= tsize) {
+			index = tsize - 1;
+			break;
+		}
+		if (index < 0) {
+			index = 0;
+			break;
+		}
+		tmp = pgm_read_uint16(&table[index]);
+		if (tmp < value) {
+			previous_index = index;
+			index += (size + 1) / 2;
+		} else if (tmp > value) {
+			previous_index = index;
+			index -= (size + 1) / 2;
+		} else
+			break;
+	}
+	/* if difference of value and current index is smaller than the difference of the previous
+	 * index and value then return the current index, otherwise the previous index is returned */
+	if (abs(pgm_read_uint16(&table[index]) - value) <= abs(tmp - value))
+		return index;
+
+	return previous_index;
+}
+
+uint8_t Engine::movingWallCheckHit(uint8_t mapX, uint16_t a)
+{
+	uint8_t hit = 0;
+	uint16_t b = 0;
+	uint16_t mX = (uint16_t)mapX * BLOCK_SIZE;
+
+	/*
+	 *   P(x, y)
+	 *    +
+	 *    |\
+	 *    | \
+	 *  a |  \
+	 * +--|---\------+
+	 * |  |    \     |
+	 * |~~+-----+~~~~|
+	 * |     b       |
+	 * |             |
+	 * |             |
+	 * +-------------+
+	 * |             |
+	 * |~~~~~~~~~~~~~|
+	 * |             |
+	 * |             |
+	 * |             |
+	 * +-------------+
+	 */
+
+	if (es.tempRayAngle != 90) {
+		b = divU24ByBlocksize((uint32_t)(pgm_tanByX(es.nTempRayAngle)) * a);
+	} else {
+		/*
+		 * corner cases for angles of 90 degrees
+		 *
+		 *   a == 0: player faces block at 90 degrees from left or right,
+		 *           this is a vertical hit of the ray
+		 *   a != 0: player faces block at 90 degrees from up or down,
+		 *           this is a horizontal hit of the ray
+		 */
+		if (a == 0)
+			b = abs(es.ld.playerX - mX);
+	}
+
+	/*
+	 * Check if playerX +- b is inside the block of a moving wall which would
+	 * mean the ray would hit it somewhere and we need to calculate wallX and
+	 * raylength.
+	 * Just checking the left and right sides are ok because the wall is only
+	 * moving vertically.
+	 */
+	if (rayAngle < 90 || rayAngle >= 270) {
+		/*
+		 * if ray is on the left side of the block
+		 * (blockX + width of the block)
+		 */
+		hit = !!(((uint16_t)es.ld.playerX + b) <= (mX + BLOCK_SIZE - 1));
+	} else {
+		/* if ray if on the right side of the block */
+		/*
+		 * corner case:
+		 *   if b > playerX: the ray cannot hit the block,
+		 *   mostly the case when es.tempRayAngle gets close to 90
+		 */
+		if (b <= es.ld.playerX)
+			hit = !!((es.ld.playerX - b) >= mX);
+	}
+
+	if (hit) {
+		/* hit */
+		if (rayAngle != 90) {
+			// TODO use viewDirection for these kind of checks
+			if (rayAngle < 90 || rayAngle >= 270)
+				es.wallX = es.ld.playerX + b - mX;
+			else
+				es.wallX = es.ld.playerX - b - mX;
+		} else {
+			es.wallX = es.ld.playerX % BLOCK_SIZE;
+		}
+		/*
+		 * TODO
+		 *
+		 * split triangle into two so we can use multiplication
+		 * with cosinus for the raylength calculation
+		 */
+		if (a == 0)
+			es.renderRayLength = b;
+		else
+			es.renderRayLength = (uint32_t)a * COSBYX / pgm_cosByX(es.nTempRayAngle);
+
+	} else {
+		/* pass */
+		return 0;
+	}
+	/* hit */
+	return 1;
+}
+
+/*
+ * execute dedicated renderer for special objects like e.g. moving walls
+ */
+uint8_t Engine::checkIgnoreBlockInner(uint8_t pMapX, uint8_t pMapY, uint8_t run)
+{
+	if (run)
+		return F0;
+
+	uint8_t tile = checkIgnoreBlock(pMapX, pMapY);
+
+	/* only handle moving walls at the moment */
+	if (tile != V_M_W)
+		return F0;
+
+	struct movingWall *mw;
+	uint8_t mYinc = 0;
+	uint8_t mwi;
+
+	/* find the moving wall tile the player is in */
+	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+
+		mw = &es.ld.movingWalls[mwi];
+
+		if (mw->offset == 0)
+			continue;
+		/*
+		 * If the offset is not zero we need to check if
+		 * the the current block is the current position
+		 * of the moving wall or if it is the second
+		 * block in which the moving wall is partially in.
+		 *
+		 * shortcut: as we are inside the block it is clear that
+		 *
+		 * block1: playerAngle >= 180 -> ray will miss the block
+		 * block2: playerAngle < 180 -> ray will miss the block
+		 *
+		 */
+		if (pMapX != mw->mapX)
+			continue;
+
+		if (pMapY != mw->mapY) {
+
+			if (pMapY != mw->mapY + 1)
+				continue;
+
+			if (rayAngle < 180) {
+				/* miss */
+				continue;
+			}
+
+			/* we are in block2 */
+			mYinc = 1;
+		} else if (rayAngle >= 180) {
+			/* miss */
+			continue;
+		}
+
+		/* found a matching wall */
+		break;
+	}
+
+	/* nothing found */
+	if (mwi == MAX_MOVING_WALLS)
+		return F0;
+
+	/* check if ray hits the wall */
+	int16_t mX = mw->mapX * BLOCK_SIZE;
+	uint16_t mY = (mw->mapY + mYinc) * BLOCK_SIZE;
+	uint8_t a, b;
+	uint16_t A, B;
+
+	/* the wall found is the current moving wall */
+	es.cmw = mw;
+
+	if (mYinc) {
+		/*
+		 * ================ block 2 ==============
+		 */
+		a = es.ld.playerY - mY - mw->offset + 1;
+
+		if (rayAngle < 270)
+			B = es.ld.playerX - mX;
+		else
+			B = mX + BLOCK_SIZE - es.ld.playerX;
+
+		A = divU24ByBlocksize((uint32_t)B * pgm_tanByX(es.tempRayAngle));
+
+		/* check if we still hit the block */
+		if (A < a) {
+			/* miss */
+			return F0;
+		}
+
+		if (es.tempRayAngle != 90) // tan = a / b
+			b = divU24ByBlocksize((uint32_t)a * pgm_tanByX(es.nTempRayAngle));
+		else
+			b = 0;
+
+		/*
+		 * TODO
+		 *
+		 * split triangle into two so we can use multiplication
+		 * with cosinus for the raylength calculation
+		 *
+		 * use local copy of wallX?
+		 */
+		es.renderRayLength = ((uint16_t)a * COSBYX) / pgm_cosByX(es.nTempRayAngle);
+
+		/* block 2 */
+		if (rayAngle < 270) {
+			/*
+			 * (mX, mY + BLOCK_SIZE)
+			 *    +-----------------------+
+			 *    |                       |
+			 *    |\                      |
+			 *    | \                     |
+			 *    |  \  (wallX)           |
+			 *    +...+~~~~~~~~~~~~~~~~~~~+ (offset)
+			 *  A |   |\                  |
+			 *    |   | \                 |
+			 *    | a |  \ c (raylength)  |
+			 *    |   |   \               |
+			 *    |   |    \              |
+			 *    |===+=====+ P(x, y)     |
+			 *    |   B  b                |
+			 *    +-----------------------+
+			 */
+			es.wallX = es.ld.playerX - mX - b;
+		} else {
+			/*
+			 * (mX, mY + BLOCK_SIZE)
+			 *    +-----------------------+
+			 *    |                       |
+			 *    |                      /|
+			 *    |                     / |
+			 *    |           (wallX)  /  |
+			 *    +...................+~~~+ (offset)
+			 *    |                  /|   | A
+			 *    |                 / |   |
+			 *    |  c (raylength) /  | a |
+			 *    |               /   |   |
+			 *    |              /    |   |
+			 *    |     P(x, y) +=====+===|
+			 *    |                b  B   |
+			 *    +-----------------------+
+			 */
+			es.wallX = es.ld.playerX - mX + b;
+		}
+	} else {
+		/*
+		 * ================ block 1 ==============
+		 */
+		a = mY + mw->offset - es.ld.playerY;
+
+		if (rayAngle > 90)
+			B = es.ld.playerX - mX;
+		else
+			B = mX + BLOCK_SIZE - es.ld.playerX;
+
+		A = divU24ByBlocksize((uint32_t)B * pgm_tanByX(es.tempRayAngle));
+
+		/* check if we still hit the block */
+		if (A < a) {
+			/* miss */
+			return F0;
+		}
+
+		if (es.tempRayAngle != 90) // tan = b / a
+			b = divU24ByBlocksize((uint32_t)a * pgm_tanByX(es.nTempRayAngle));
+		else
+			b = 0;
+
+		/*
+		 * TODO
+		 *
+		 * split triangle into two so we can use multiplication
+		 * with cosinus for the raylength calculation
+		 */
+		es.renderRayLength = ((uint16_t)a * COSBYX) / pgm_cosByX(es.nTempRayAngle);
+
+		/* block 1 */
+		if (rayAngle > 90) {
+			/*
+			 * (mX, mY)
+			 *    +-----------------------+
+			 *    |   P(x, y)             |
+			 *    |        +              |
+			 *    |       /|              |
+			 *    |    c / |              |
+			 *    |     /  | a            |
+			 *    | wx /   |              |
+			 *    +...+====+~~~~~~~~~~~~~~+ (offset)
+			 *    |  /   b | A            |
+			 *    | /      |              |
+			 *    |/       |              |
+			 *    +========+              |
+			 *    |    B                  |
+			 *    +-----------------------+
+			 */
+			es.wallX = es.ld.playerX - mX - b;
+		} else {
+			/*
+			 * (mX, mY)
+			 *    +-----------------------+
+			 *    |         P(x, y)       |
+			 *    |              +        |
+			 *    |              |\       |
+			 *    |              | \ c    |
+			 *    |            a |  \     |
+			 *    |       wx     |   \    |
+			 *    +..............+....+~~~| (offset)
+			 *    |            A | b   \  |
+			 *    |              |      \ |
+			 *    |              |       \|
+			 *    |              +========+
+			 *    |                  B    |
+			 *    +-----------------------+
+			 */
+			es.wallX = es.ld.playerX - mX + b;
+		}
+	}
+
+	return V_M_W;
+}
+
+uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, uint16_t hY)
+{
+	uint8_t tile;
+
+	/*
+	 * handle moving walls
+	 */
+	struct movingWall *mw;
+	uint8_t block2;
+
+	tile = F0;
+	for (uint8_t mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+		uint8_t blockY;
+
+		mw = &es.ld.movingWalls[mwi];
+
+		/*
+		 * no need to check map corner case as all maps should have a
+		 * block border!
+		 */
+		blockY = mw->mapY;
+
+		/*
+		 * check if block we hit on the map is the current block1 of
+		 * a moving wall
+		 */
+		if (mapX != mw->mapX)
+			continue;
+
+		if (mw->mapY != mapY) {
+
+			if (mw->offset == 0)
+				continue;
+
+			if (mapY != mw->mapY + 1)
+				continue;
+
+			block2 = 1;
+		} else {
+			block2 = 0;
+		}
+
+		blockY += block2;
+
+		uint16_t mY = (uint16_t)blockY * BLOCK_SIZE;
+		uint16_t offset = mY + mw->offset;
+
+		/* decide to either hit/pass/calc */
+		if (rayAngle < 180) {
+			/* Q1/Q2 */
+			if (block2) {
+				/* block 2 */
+				if (hY <= offset) {
+					/* hit */
+					tile = V_M_W;
+				} else {
+					/* pass */
+				}
+			} else {
+				/* block 1 */
+				if (hY <= offset) {
+					uint16_t a = mY - es.ld.playerY + mw->offset;
+					/* calc */
+					if (movingWallCheckHit(mapX, a)) {
+						tile = V_M_W;
+					}
+				} else {
+					/* hit */
+					tile = V_M_W;
+				}
+			}
+		} else {
+			/* Q3/Q4 */
+			if (block2) {
+				/* block 2 */
+				if (hY >= offset) {
+					uint16_t a = es.ld.playerY - mY - mw->offset + 1;
+					/* calc */
+					if (movingWallCheckHit(mapX, a)) {
+						tile = V_M_W;
+					}
+				} else {
+					/* hit */
+					tile = V_M_W;
+				}
+			} else {
+				/* block 1 */
+				if (hY >= offset) {
+					/* hit */
+					tile = V_M_W;
+				} else {
+					/* pass */
+				}
+			}
+		}
+		break;
+	}
+	if (tile != F0) {
+		/* hit */
+		/* TODO this is quite messy */
+		if (es.wallX == -1) {
+			/* TODO ((hY + 1) % BLOCK_SIZE == 0 means this is a horizontal hit */
+			if ((mw->offset == 0) && ((hY + 1) % BLOCK_SIZE == 0)) {
+				es.wallX = hX % BLOCK_SIZE;
+			} else {
+				if (block2)
+					es.wallX = hY % BLOCK_SIZE + BLOCK_SIZE - mw->offset;
+				else
+					es.wallX = hY % BLOCK_SIZE - mw->offset;
+			}
+		}
+		es.cmw = mw;
+	}
+	return tile;
+}
+
+uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
+{
+#if defined(CONFIG_MAP_CACHE)
+	uint8_t tile = readThroughCache(mapX, mapY);
+#else
+	/* ~4ms */
+	uint8_t tile = checkIgnoreBlock(mapX, mapY);
+#endif
+	if (tile >= SPRITES_START) {
+		tile = F0;
+	} else if (tile == H_DOOR) {
+		/*
+		 * check if we can just ignore that door
+		 */
+		tile = checkIfDoorToBeIgnored(mapX, mapY);
+
+	} else if (tile == TRIGGER) {
+		for (uint8_t t = 0; t < MAX_TRIGGERS; t++) {
+			struct trigger *trig = &es.ld.triggers[t];
+			if (trig->mapX == mapX && trig->mapY == mapY) {
+				es.ct = trig;
+				break;
+			}
+		}
+	}
+	return tile;
+}
+
+#ifndef CONFIG_ASM_OPTIMIZATIONS
+uint8_t Engine::checkIgnoreBlock(uint8_t mapX, uint8_t mapY)
+{
+	Cart::seekData(levelFlashOffset + (MAP_WIDTH * mapY + mapX));
+	return Cart::readEnd();
+}
+#endif
+
+int8_t Engine::checkDoor(uint8_t wallX)
+{
+	for (uint8_t door = 0; door < es.nrOfActiveDoors; door++) {
+		uint8_t doorId = es.activeDoors[door];
+		struct door *d = &es.ld.doors[doorId];
+		if (d != es.cd)
+			continue;
+		if (wallX >= d->offset) {
+			/* ray hits the door */
+			return wallX - d->offset;
+		} else {
+			es.ignoreBlock[es.blocksToIgnore++] = doorId;
+			return -1;
+		}
+	}
+	return wallX;
+}
+
+void Engine::cleanIgnoreBlock(void)
+{
+	uint8_t newBlocksToIgnore = 0;
+
+	/* TODO problematic for objects other than doors */
+	for (uint8_t block = 0; block < es.blocksToIgnore; block++) {
+		uint8_t blockNr = es.ignoreBlock[block];
+		struct door *d = &es.ld.doors[blockNr];
+		if (d->state == DOOR_OPEN)
+			es.ignoreBlock[newBlocksToIgnore++] = blockNr;
+	}
+	es.blocksToIgnore = newBlocksToIgnore;
+}
+
+uint8_t Engine::checkIfDoorToBeIgnored(uint8_t mapX, uint8_t mapY)
+{
+	uint8_t door;
+
+	/* find the door at mapX/mapY */
+	for (door = 0; door < MAX_DOORS; door++) {
+		struct door *d = &es.ld.doors[door];
+		if (d->mapX == mapX && d->mapY == mapY) {
+
+			/* check if the door is on the ignore list */
+			for (uint8_t block = 0; block < es.blocksToIgnore; block++) {
+				uint8_t blockNr = es.ignoreBlock[block];
+				if (door == blockNr) {
+					return F0;
+				}
+			}
+
+			/* set current door so it can be rendered correctly */
+			es.cd = d;
+
+			break;
+		}
+	}
+
+	// TODO what if door not found?
+
+	return H_DOOR;
+}
+
+// TODO use cache function!
+uint8_t Engine::checkSolidBlockCheap(uint8_t mapX, uint8_t mapY)
+{
+	uint8_t tile = checkIgnoreBlock(mapX, mapY);
+
+	/* reset current moving wall */
+	es.cmw = NULL;
+
+	if (tile >= SPRITES_START)
+		return F0;
+
+	/* check if it is an open door */
+	if (tile == H_DOOR) {
+		/*
+		 * check if we can just ignore that door
+		 */
+		tile = checkIfDoorToBeIgnored(mapX, mapY);
+	}
+
+	/* if not a moving wall, return immediately */
+	if (tile != V_M_W)
+		return tile;
+
+	struct movingWall *mw;
+	uint8_t mwi;
+
+	mw = &es.ld.movingWalls[0];
+
+	/* find the moving wall tile the player is in */
+	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++, mw++) {
+
+		if (mapX != mw->mapX)
+			continue;
+
+		if (mapY != mw->mapY) {
+
+			if (mapY != mw->mapY + 1)
+				continue;
+
+			/* we are in block2 */
+		}
+		/* else: we are in block1 */
+
+		/* found a matching wall */
+		/* set current moving wall */
+		es.cmw = mw;
+
+		return V_M_W;
+	}
+	return F0;
+}
+
+/*
+ * the corners of each block are named in the following order
+ *
+ *       A--------------B
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       D--------------C
+ *
+ *   +---+---+---+
+ *   | 7 | 8 | 9 |
+ *   +---+---+---+
+ *   | 6 | 1 | 2 |           +------ 0°
+ *   +---+---+---+           |
+ *   | 5 | 4 | 3 |           |
+ *   +---+---+---+           |
+ *
+ *                          90°
+ */
+/* viewAngle < 90 */
+/*
+ *   .   +---+
+ *       | A |
+ *   +---+---+
+ *   | C | B |
+ *   +---+---+
+ *
+ */
+/* viewAngle < 180 */
+/*
+ *   +---+   .
+ *   | C |
+ *   +---+---+
+ *   | B | A |
+ *   +---+---+
+ *
+ */
+/* viewAngle < 270 */
+/*
+ *   +---+---+
+ *   | B | C |
+ *   +---+---+
+ *   | A |
+ *   +---+   .
+ *
+ */
+/* viewAngle < 360 */
+/*
+ *   +---+---+
+ *   | A | B |
+ *   +---+---+
+ *       | C |
+ *   .   +---+
+ *
+ */
+uint8_t Engine::calcDistance(uint16_t pA, uint16_t pB)
+{
+	if (pA < pB)
+		return (uint8_t)(pB - pA);
+
+	return (uint8_t)(pA - pB);
+}
+
+/*
+ * the corners of each block are named in the following order
+ *
+ *       A--------------B
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       |              |
+ *       D--------------C
+ *
+ *   +---+---+---+
+ *   | 6 | 7 | 8 |
+ *   +---+---+---+
+ *   | 5 | 0 | 1 |           +------ 0°
+ *   +---+---+---+           |
+ *   | 4 | 3 | 2 |           |
+ *   +---+---+---+           |
+ *
+ *                          90°
+ */
+static const uint8_t quadrant2blockId[4 * 6] PROGMEM = {
+	0, 8, 1, 2, 3, 4,
+	0, 2, 3, 4, 5, 6,
+	0, 4, 5, 6, 7, 8,
+	0, 6, 7, 8, 1, 2,
+};
+
+/*
+ * quadrant number to map direction (columns are (x:y))
+ */
+static const int8_t q2m[4*2] PROGMEM = {
+	 1,  1,
+	-1,  1,
+	-1, -1,
+	 1, -1,
+};
+
+/*
+ * blockId to map direction (columns are (x:y))
+ */
+static const int8_t blockId2mapOffset[9 * 2] PROGMEM = {
+	 0,  0, /* 0 */
+	 1,  0, /* 1 */
+	 1,  1, /* 2 */
+	 0,  1, /* 3 */
+	-1,  1, /* 4 */
+	-1,  0, /* 5 */
+	-1, -1, /* 6 */
+	 0, -1, /* 7 */
+	 1, -1, /* 8 */
+};
+
+/*
+ * do a bounding box check, below example for y-intersection
+ *
+ *  ulp  +-------------------+
+ *       |                   ip
+ *       |                   | \
+ *       |                 A |  \ mmd
+ *       |                   |   \
+ *       |                   |    \
+ *       |                   b-----c
+ *       |                   |  B
+ *       |                   |
+ *       |                   |
+ *       +-------------------+ lrp
+ *
+ * ulp/lrp are the outer bounds of the box including the
+ *         minimal distance to the block
+ * ml      is the leftmost/upmost coordinate of the block
+ *         inside the box defined by ulp/lrp, finally it will
+ *         be set to either ulp or lrp as movement limit
+ * B       distance from point b to c
+ * A       distance from point b to ip
+ * mmd     distance from point c to ip, maximum allowed movement distance
+ * ip      intersection point with desired axis
+ */
+void Engine::checkIntersect(struct intersect *i)
+{
+	uint32_t mmd, td;
+
+	/*
+	 * calculate upper/left point of the bounding box
+	 * by substracting the minimal wall distance
+	 */
+	if (i->ml <= minWallDistance)
+		i->ulp = 0;
+	else
+		i->ulp = i->ml - minWallDistance;
+
+	/*
+	 * calculate lower/right point of the bounding box
+	 * by adding the block size and the minimum wall
+	 * distance
+	 */
+	i->lrp = i->ml + BLOCK_SIZE + minWallDistance;
+
+	/*
+	 * if the current view it torwards the upper/left xy-limit
+	 * of the bounding box then the movement limit will be
+	 * set to it, otherwise the lower/right xy-limit will be chosen
+	 */
+	if (i->quadrant == 0 || i->quadrant == (1 + i->s * 2)) {
+		i->ml = i->ulp;
+	} else {
+		i->ml = i->lrp;
+	}
+	mmd = calcDistance(i->oX, i->ml); /* calc B */
+
+	if (i->quadrant == 1 || i->quadrant == 3) {
+		td = ((uint32_t)pgm_tanByX(i->sin) * mmd); /* calc A */
+		/* if td gets zero then mmd is simply B */
+		if (td) {
+			uint8_t a = pgm_cosByX(i->cos);
+			mmd = td;
+			if (a)
+				mmd /= a;
+		}
+	} else {
+		td = ((uint32_t)pgm_tanByX(i->cos) * mmd); /* calc A */
+		/* if td gets zero then mmd is simply B */
+		if (td) {
+			uint8_t a = pgm_cosByX(i->sin);
+			mmd = td;
+			if (a)
+				mmd /= a; /* calc mmd */
+		}
+	}
+	td = divU24ByBlocksize(td); /* fixup A */
+	/*
+	 * calculate intersection point (a) with bounding box,
+	 * depending on (s) it is either an x or an y intersection
+	 */
+	i->ip = i->oY + (td * pgm_read_int8(&q2m[i->quadrant * 2 + i->s]));
+	/* if mmd is shorter than the movement distance (distance) then
+	 * mmd will be returned as result, otherwise the max distance
+	 * is assumed (will fallthrough the intersection test later)
+	 * and returned as result
+	 */
+	if (mmd < i->distance) {
+		i->mmd = mmd;
+	} else
+		i->mmd = i->distance;
+}
+
+uint8_t Engine::move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_t *y, uint8_t distance)
+{
+	int16_t nX, nY;
+	int16_t dX, dY;
+	uint16_t oX = *x;
+	uint16_t oY = *y;
+	uint8_t hit = 0;
+
+	if (!direction)
+		return 0;
+
+	/* calculate new position */
+	if (direction == 4) {
+		/* strafe right
+		 * viewAngle + 90
+		 */
+		direction = 1;
+		/*
+		 * sinViewAngle = viewAngle - 90, so set it now as
+		 * viewAngle will be increased by 90
+		 */
+		viewAngle += 90;
+		if (viewAngle >= 360)
+			viewAngle -= 360;
+	} else if (direction == 3) {
+		/* strafe left
+		 * viewAngle - 90
+		 */
+		direction = 1;
+		/*
+		 * viewAngle = sinViewAngle - 90, so set it now as
+		 * sinViewAngle will be decreased by 90
+		 */
+		if (viewAngle < 90)
+			viewAngle += 360;
+		viewAngle -= 90;
+	}
+
+	if (direction == 2) {
+		/*
+		 * invert viewAngle when the object is moving backward
+		 * to simplify the below if/else statements
+		 */
+		viewAngle += 180;
+		if (viewAngle >= 360)
+			viewAngle -= 360;
+	}
+
+	/* calc sinViewAngle from original view angle */
+	int16_t oSinViewAngle = (int16_t)viewAngle - 90;
+	if (oSinViewAngle < 0)
+		oSinViewAngle += 360;
+
+	dX = divS24ByBlocksize(pgm_cosByX(viewAngle) * distance);
+	dY = divS24ByBlocksize(pgm_cosByX(oSinViewAngle) * distance);
+
+	nX = oX + dX;
+	nY = oY + dY;
+
+	/*
+	 * check for wall collision depending on the objects direction
+	 */
+	uint8_t pMapX, pMapY;
+
+	/* calculate current block position on the map */
+	pMapX = divU16ByBlocksize(oX);
+	pMapY = divU16ByBlocksize(oY);
+
+	uint8_t quadrant;
+	uint8_t cosViewAngle;
+
+	if (viewAngle < 90) {
+		quadrant = 0;
+		cosViewAngle = viewAngle;
+	} else if (viewAngle < 180) {
+		quadrant = 1;
+		cosViewAngle = viewAngle - 90;
+	} else if (viewAngle < 270) {
+		quadrant = 2;
+		cosViewAngle = viewAngle - 180;
+	} else {
+		quadrant = 3;
+		cosViewAngle = viewAngle - 270;
+	}
+
+	uint8_t sinViewAngle = 90 - cosViewAngle;
+
+	/* use the start of the frame buffer as intermediate buffer */
+	struct intersect *xI = (struct intersect *)(arduboy->getBuffer() + 0);
+	struct intersect *yI = xI + 1;
+
+	xI->oX = oY;
+	xI->oY = oX;
+	xI->s = 0;
+	xI->quadrant = quadrant;
+	xI->cos = sinViewAngle;
+	xI->sin = cosViewAngle;
+	xI->distance = distance;
+
+	yI->oX = oX;
+	yI->oY = oY;
+	yI->s = 1;
+	yI->quadrant = quadrant;
+	yI->cos = cosViewAngle;
+	yI->sin = sinViewAngle;
+	yI->distance = distance;
+
+	uint8_t is = quadrant * 6, ie = is + 6;
+
+	for (uint8_t i = is; i < ie; i++) {
+		uint8_t blockId = pgm_read_uint8(&quadrant2blockId[i]);
+		int8_t mapXoff = pgm_read_int8(&blockId2mapOffset[blockId * 2 + 0]);
+		int8_t mapYoff = pgm_read_int8(&blockId2mapOffset[blockId * 2 + 1]);
+		uint16_t bx, by;
+		uint8_t cMapX = pMapX + mapXoff;
+		uint8_t cMapY = pMapY + mapYoff;
+
+		if (checkSolidBlockCheap(cMapX, cMapY) == F0)
+			continue;
+
+		/*
+		 * TODO
+		 *   could handle door frames as well so the level is more interesting,
+		 *   for this also the rendering algorithm must be extended for half sized
+		 *   blocks (checkIgnoreBlockInner)
+		 */
+
+
+		/*
+		 *  if moving wall, properly add the offset
+		 */
+		if (es.cmw) {
+			by = es.cmw->mapY * BLOCK_SIZE + es.cmw->offset;
+		} else {
+			by = cMapY * BLOCK_SIZE;
+		}
+
+
+		xI->ml = by;
+
+		checkIntersect(xI);
+
+		/*
+		 * calculate values for y-axis intersection check
+		 */
+		bx = cMapX * BLOCK_SIZE;
+
+
+		yI->ml = bx;
+
+		checkIntersect(yI);
+
+		/*
+		 * the ray may hit both sides, so always take the shortest
+		 * ray
+		 */
+		if (xI->mmd <= yI->mmd)
+			yI->mmd = distance;
+		if (yI->mmd <= xI->mmd)
+			xI->mmd = distance;
+
+		/*
+		 * Check for x-axis intersection:
+		 *  If distance from P to intersection point is less than the
+		 *  movement distance (e.g. the number of pixels per move) then
+		 *  we would intersect
+		 */
+		if (xI->ip > (int16_t)yI->ulp && xI->ip < (int16_t)yI->lrp && xI->mmd < distance) {
+			/* hit on x-axis */
+			nY = xI->ml;
+			hit++;
+		}
+		/* check for y-axis intersection */
+		if (yI->ip > (int16_t)xI->ulp && yI->ip < (int16_t)xI->lrp && yI->mmd < distance) {
+			/* hit on y-axis */
+			nX = yI->ml;
+			hit++;
+		}
+
+		if (hit == 2)
+			break;
+	}
+
+	/* set new position */
+	*x = nX;
+	*y = nY;
+
+	return !!hit;
+}
+
+/*
+ * draw wall slices without texture because they are too far away
+ *
+ * maybe use some dithering laster instead of a solid column
+ */
+void Engine::drawNoTexture(int16_t screenY, uint16_t wallHeight, struct renderInfo *re)
+{
+	uint8_t bit;
+	unsigned char *buffer = es.screenColumn + (uint8_t)screenY / 8;
+
+	bit = bitshift_left[screenY % 8];
+
+	/*
+	 * draw wall textures that are less than MIN_WALL_HEIGHT pixels high
+	 * TODO optimize this by drawing the pixels at once
+	 */
+	/* backward counting loops result in less code */
+	for (uint8_t yOffset = wallHeight; yOffset > 0; yOffset--) {
+		asm volatile (
+			/*
+			 * buffer[offset    ] |= bit;
+			 */
+			"ld __tmp_reg__, Z\n"
+			"or __tmp_reg__, %[bit]\n"
+			"st Z, __tmp_reg__\n"
+			/*
+			 * bit rol 1, add 1 to buffer address if MSB -> LSB
+			 */
+			"lsl %[bit]\n"
+			"brcc 1f\n"
+			"adc %[bit], __zero_reg__\n"
+			"adiw %A[buffer], 1\n"
+			"1:\n"
+			: [bit] "+r" (bit), // output
+			  [buffer] "+z" (buffer)
+			: //input
+			:
+		);
+	}
+}
+
+/*
+ * compare the distance of two sprites
+ */
+uint8_t Engine::compareSpriteDistance(uint8_t index1, uint8_t index2)
+{
+	return !!(es.ld.lw_sprites[index1].distance >= es.ld.lw_sprites[index2].distance);
+}
+
+/*
+ * compare two values
+ */
+uint8_t Engine::compareGreaterOrEqual(uint8_t index1, uint8_t index2)
+{
+	return !!(index1 >= index2);
+}
+
+uint8_t Engine::readThroughCache(uint8_t mapX, uint8_t mapY)
+{
+	uint8_t cacheRow = mapX % CACHE_ROWS;
+	uint8_t cacheColumn = mapY % CACHE_COLUMNS;
+	/* calculate cache offset */
+	uint16_t cacheOffset = ((uint16_t)cacheRow * (CACHE_COLUMNS * sizeof(cache_entry))) + (cacheColumn * sizeof(cache_entry));
+	unsigned char *cache = arduboy->getBuffer();
+
+	struct cache_entry *cEntry = (struct cache_entry *)(cache + cacheOffset);
+	if (cEntry->mapX == mapX && cEntry->mapY == mapY) {
+		return cEntry->tile;
+	}
+	/* read map tile */
+	uint8_t tile = checkIgnoreBlock(mapX, mapY);
+
+	/* store in cache */
+	cEntry->mapX = mapX;
+	cEntry->mapY = mapY;
+	cEntry->tile = tile;
+
+	return tile;
+}
+
+void Engine::resetSystemEvents(void)
+{
+	es.systemEvent = EVENT_NONE;
+}
+
+void Engine::setSystemEvent(uint8_t event, uint8_t data)
+{
+	es.systemEvent |= event;
+
+	for (uint8_t bit = 0; bit < 8; bit++) {
+		if (event & (1 << bit))
+			es.systemEventData[bit] = data;
+	}
+}
+
+uint8_t Engine::getSystemEventData(uint8_t event)
+{
+	if (!event)
+		return 0;
+
+	for (uint8_t bit = 0; bit < 8; bit++) {
+		if (event & (1 << bit))
+			return es.systemEventData[bit];
+	}
+	return 0;
+}
+
+uint8_t Engine::getSystemEvents(void)
+{
+	return es.systemEvent;
+}
+
+uint8_t Engine::jumpToLevel(uint8_t level)
+{
+	currentLevel = level;
+	if (currentLevel >= MAX_LEVELS) {
+		currentLevel = MAX_LEVELS - 1;
+		return 0;
+	}
+	return 1;
+}
+
+uint8_t Engine::nextLevel(void)
+{
+	return jumpToLevel(currentLevel + 1);
+}
+
+uint8_t Engine::setActiveQuest(uint8_t questId)
+{
+	if (activeQuestId == QUEST_NOT_ACTIVE && questId != activeQuestId) {
+		activeQuestId = questId;
+	}
+
+	return !!(activeQuestId == questId);
+}
+
+uint8_t Engine::isActiveQuestFinished(void)
+{
+	return !!(questsFinished[activeQuestId / 8] | (1 << (activeQuestId % 8)));
+}
+
+void Engine::evaluateActiveQuest(void)
+{
+	if (activeQuestId == QUEST_NOT_ACTIVE || isActiveQuestFinished())
+		return;
+
+	// TODO read quest log from flash and proceed, update questlog entry
+
+	/* finish quest if log entry says finished */
+	questsFinished[activeQuestId / 8] |= 1 << (activeQuestId % 8);
+}
+
+void Engine::rewardActiveQuest(void)
+{
+	// TODO read reward section of active quest and apply it
+
+	/* reset quest ID */
+	activeQuestId = QUEST_NOT_ACTIVE;
+}
+
+void Engine::startAudioEffect(uint8_t id, uint8_t data)
+{
+	struct audio_effect *ae = &audioEffects[id];
+
+	// TODO check if distance to object is ok?
+
+	ae->trigger = AUDIO_EFFECT_TRIGGER_START;
+	ae->data = data & 0x3f;
+}
+
+void Engine::stopAudioEffect(uint8_t id)
+{
+	struct audio_effect *ae = &audioEffects[id];
+
+	ae->trigger = AUDIO_EFFECT_TRIGGER_STOP;
+}
+
+static uint8_t ray_mask[64 / 8];
+
+void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInfo *re)
+{
+	re->ystart = 0;
+	re->yend = SCREEN_HEIGHT;
+	re->yfirst = SCREEN_HEIGHT;
+	re->ylast = SCREEN_HEIGHT;
+
+	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
+		struct lightweight_sprite *s = &es.ld.lw_sprites[es.visibleSpriteList[i]];
+		/*
+		 * this ray might not reach the sprite
+		 */
+		if (s->distance >= rayLength) {
+			continue;
+		}
+
+		struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
+
+		int16_t diffAngle;
+
+		if (rayAngle < fovLeft)
+			diffAngle = rayAngle + 360 - hw_s->spriteAngle;
+		else
+			diffAngle = rayAngle - hw_s->spriteAngle;
+
+		if (diffAngle >= 360)
+			diffAngle -= 360;
+		else if (diffAngle < 0)
+			diffAngle += 360;
+
+		/* TODO diffAngle > 90, improve this */
+		uint16_t angle = diffAngle <= 90 ? 90 - diffAngle: 450 - diffAngle;
+		int16_t h = divS24ByBlocksize((int32_t)pgm_cosByX(angle) * (int16_t)s->distance);
+
+		if (abs(h) < SPRITE_WIDTH / 2) {
+			int16_t spriteX;
+
+			/* the sprite is really visible */
+			hw_s->visible += 1;
+			/*
+			 * check if the sprite column should be drawn at all
+			 */
+			int8_t tScreenY = hw_s->screenY;
+
+			ray_mask[ray / 8] |= 1 << (ray % 8);
+
+			/******************************************************
+			 *
+			 * draw texture onto the sprite
+			 *
+			 */
+
+			/* h = negative: right side */
+			spriteX = ((int16_t)SPRITE_WIDTH / 2) + h;
+
+			/*
+			 * find x coordinate of the texture, height of sprites is 16 pixel
+			 * so multiply by sprite height in bytes (image data is stored columnwise)
+			 */
+			uint8_t texX = spriteX * SPRITE_HEIGHT_BYTES;
+
+			/*
+			 * draw vertical slice of the texture
+			 */
+			uint24_t p = hw_s->p;
+
+			Cart::seekData(p + texX);
+			/* load the sprite mask from flash */
+			es.texColumn[0] = Cart::readPendingUInt8();
+			es.texColumn[1] = Cart::readPendingUInt8();
+			/* load the sprite data from flash */
+			es.texColumn[4] = Cart::readPendingUInt8();
+			es.texColumn[5] = Cart::readEnd();
+
+			/* read scale and px_base from flash (+2 to skip the wallHeight field) */
+			Cart::seekData(rayLengths_flashoffset + 2 + s->distance * 9);
+			uint16_t scale = Cart::readPendingUInt8();
+			scale |= Cart::readPendingUInt8() << 8;
+			uint8_t px_base = Cart::readPendingUInt8();
+
+			uint8_t dh = hw_s->spriteDisplayHeight;
+
+			/* draw the texture column */
+			if (scale < TEXTURE_SCALE_UP_LIMIT) {
+				drawTextureColumnScaleUp2(hw_s->screenY, dh, px_base, re);
+			} else {
+				drawAll(hw_s->screenY, scale, dh, re);
+			}
+
+if (re->yfirst < re->ystart)
+	re->ystart = re->yfirst;
+if (re->ylast > re->yend)
+	re->yend = re->ylast;
+
+			/* deselect cart */
+			Cart::readEnd();
+
+			/*
+			 * shooting will happen in the middle of the screen (64 rays / 2 = 32)
+			 *   items and projectiles will be ignored
+			 */
+			if (es.fireCountdown == 0 && (s->type < V_OF_S(I_TYPE0)) && !IS_PROJECTILE(s->flags)) {
+				/* TODO weapon effective distance */
+
+				/* if player shoots, enemy will attack */
+				s->state = ENEMY_ATTACK;
+
+				/* TODO, maybe just draw some splatter, set frame for hit animation */
+				//s->vSide = <hit side>;
+
+				/* do damage based on current weapon */
+				uint8_t damage = pgm_read_uint8(&weaponDamage[es.playerActiveWeapon]);
+
+				/* inflict damage to the sprite */
+				doDamageToSprite(s, damage);
+			}
+		}
+	}
+}
+
+void Engine::updateSprites(int16_t screenYStart, int16_t fovLeft, uint16_t maxRayLength)
+{
+	/* rightmost angle of the players current field of view */
+	int16_t fovRight = fovLeft + FIELD_OF_VIEW;
+	if (fovRight >= 360)
+		fovRight -= 360;
+
+	/**********************************************************************
+	 *
+	 * update each sprite (position, state)
+	 * check all sprites if they are in the field of view of the player
+	 *
+	 * calculate the distance and the angle of the sprite to the player
+	 *
+	 */
+	es.nrOfVisibleSprites = 0;
+	struct lightweight_sprite *s = &es.ld.lw_sprites[0];
+
+	for (uint8_t i = 0; i < MAX_SPRITES; i++, s++) {
+		/* sprite is not active */
+		if (IS_INACTIVE(s->flags))
+			continue;
+
+		/*
+		 * If player is dead, pretend all sprites are not visbile.
+		 * This will force attacking sprites to just move randomly.
+		 */
+		if (es.playerHealth == 0) {
+			s->distance = 0xffff;
+		}
+
+		/* update each sprites state */
+		if (IS_SIMPLE(s->flags)) {
+			/* simple sprites, they do not move at all */
+			if (s->distance < 16) { //itemCollectableDistance:
+				/*
+				 * for items make the screen blink
+				 */
+				if (s->type >= V_OF_S(I_TYPE0)) {
+					es.blinkScreen = 1;
+					setStatusMessage(s->type - V_OF_S(STATUS_MSG_OFFSET));
+					/*
+					 * remove from sprite list, not very clever as
+					 * we always need to loop over all the sprites
+					 */
+					s->flags |= S_INACTIVE;
+				}
+
+				uint8_t playerWeapons = es.playerWeapons;
+
+				if (s->type == V_OF_S(I_TYPE4)) {
+					/*  increase health */
+					es.playerHealth += 12;
+					if (es.playerHealth > 100)
+						es.playerHealth = 100;
+				} else if (s->type == V_OF_S(I_TYPE5)) {
+					/*  add ammo */
+					/* start at 1 because weapon 0 is always set */
+					for (uint8_t w = 1; w < NR_OF_WEAPONS; w++) {
+						uint8_t ammo = es.playerAmmo[w];
+						if (playerWeapons | bitshift_left[w])
+							ammo += 11 - ((w - 1) * 5);
+
+						if (ammo > 99)
+							ammo = 99;
+						es.playerAmmo[w] = ammo;
+					}
+				} else if (s->type == V_OF_S(I_TYPE0)) {
+					/* increase number of keys */
+					es.playerKeys++;
+				} else if (s->type == V_OF_S(I_TYPE1)) {
+					/* add weapon */
+					playerWeapons |= HAS_WEAPON_2;
+				} else if (s->type == V_OF_S(I_TYPE2)) {
+					/* add weapon */
+					playerWeapons |= HAS_WEAPON_3;
+				} else if (s->type == V_OF_S(I_TYPE3)) {
+					/* add weapon */
+					playerWeapons |= HAS_WEAPON_4;
+				}
+				es.playerWeapons = playerWeapons;
+			}
+		} else if (IS_PROJECTILE(s->flags)) {
+			if (s->distance < 16) {
+				/* inflict damage on the player if close enough */
+				es.playerHealth--;
+				es.blinkScreen = 1;
+
+				if (es.playerHealth == 0)
+					es.killedBySprite = 0;
+
+				/* set inactive */
+				s->flags |= S_INACTIVE;
+			} else {
+				if (moveSprite(s, 2)) {
+					/* sprite hit some object, mark it inactive */
+					s->flags |= S_INACTIVE;
+					s->distance = 0xffff;
+				}
+			}
+		} else {
+			/* set enemies movement speed */
+			uint8_t speed = pgm_read_uint8(&enemyMovementSpeeds[s->type - V_OF_S(ENEMIES_START)]);
+			uint8_t new_state;
+
+			switch (s->state) {
+			case ENEMY_IDLE:
+				new_state = enemyStateIdle(s, speed);
+				break;
+			case ENEMY_ATTACK:
+				new_state = enemyStateAttack(s, speed);
+				break;
+			case ENEMY_FOLLOW:
+				new_state = enemyStateFollow(s, speed);
+				break;
+			case ENEMY_RANDOM_MOVE:
+				new_state = enemyStateRandomMove(s, speed);
+				break;
+#if 0
+			case ENEMY_SPAWN:
+				new_state = enemyStateSpawn(s, speed);
+				break;
+#endif
+			}
+			s->state = new_state;
+		}
+
+		/* calculate new distance */
+
+		uint16_t dX, dY;
+		int16_t spriteAngle;
+		uint8_t quadrant;
+
+		/*
+		 * calculate in which quadrant the sprite is in, relative to the
+		 * player
+		 */
+		if (es.ld.playerX < s->x) {
+			dX = s->x - es.ld.playerX;
+			quadrant = 1;
+		} else {
+			dX = es.ld.playerX - s->x;
+			quadrant = 2;
+		}
+
+		if (es.ld.playerY < s->y) {
+			dY = s->y - es.ld.playerY;
+			quadrant += 4;
+		} else {
+			dY = es.ld.playerY - s->y;
+			quadrant += 8;
+		}
+
+		/*
+		 * both negative:   5  (Q1)
+		 * just x negative: 9  (Q4)
+		 * just y negative: 6  (Q2)
+		 * both positive:   10 (Q3)
+		 */
+		uint16_t tan;
+		uint16_t atan;
+		uint16_t distance;
+
+		/*
+		 * calculate the distance to the player
+		 */
+		if (dY > dX) {
+			if (dX > 1)
+				tan = dY * BYX / dX;
+			else
+				tan = dY * BYX;
+			atan = 90 - arc_u16(tan, tanByX, ARRAY_SIZE(tanByX));
+			/* TODO use multiplication like for wall textures */
+			distance = (uint32_t)dY * COSBYX / pgm_cosByX(atan);
+		} else {
+			if (dY > 1)
+				tan = dX * BYX / dY;
+			else
+				tan = dX * BYX;
+			atan = arc_u16(tan, tanByX, ARRAY_SIZE(tanByX));
+			/* TODO use multiplication like for wall textures */
+			distance = (uint32_t)dX * COSBYX / pgm_cosByX(90 - atan);
+		}
+
+
+		s->distance = distance; /* required to collect items even when not in line of sight */
+
+		/*
+		 * nothing to do, sprite is too far away
+		 *
+		 *  Check distance so that the min height of the sprite will
+		 *  be at least 6 pixels.
+		 *  Only consider the smallest texture height. So for bigger
+		 *  textures the min size will be lower than 4 pixels but we
+		 *  gain some progmem by this simplyfication.
+		 *
+		 *  if sprite is futher away than maxRayLength then it is considered as
+		 *  non visible
+		 */
+		if ((distance > maxRayLength) || (distance > (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)) || (distance == 0))
+			continue;
+
+		if (quadrant == 5) {
+			/* Q1 */
+			spriteAngle = 90 - atan;
+		} else if (quadrant == 6) {
+			/* Q2 */
+			spriteAngle = 90 + atan;
+		} else if (quadrant == 9) {
+			/* Q4 */
+			spriteAngle = 270 + atan;
+		} else {
+			/* Q3 */
+			spriteAngle = 270 - atan;
+		}
+
+		int16_t minAngle = arc_s8(SPRITE_WIDTH * COSBYX / 2 / distance, cosByX, ARRAY_SIZE(cosByX));
+		/* TODO totally forgot why that is (minAngle % 90) */
+		while (minAngle >= 90)
+			minAngle -= 90;
+
+		/*
+		 * extend left border of field of view by the
+		 * min angle required to see the sprite
+		 */
+		int16_t spriteL = fovLeft - minAngle;
+		if (spriteL < 0)
+			spriteL += 360;
+		/*
+		 * extend right border of field of view by the
+		 * min angle required to see the sprite
+		 */
+		int16_t spriteR = fovRight + minAngle;
+		if (spriteR >= 360)
+			spriteR -= 360;
+
+		/*
+		 * If the right boundary of the FOV is less than the left
+		 * then we add 360 degrees to the right for the boundary check.
+		 * Same we do for the spriteAngle if it is less than the left
+		 * and less than the right boundary.
+		 */
+		if (spriteR < spriteL) {
+			if (spriteAngle < spriteL && spriteAngle < spriteR)
+				spriteAngle += 360;
+			spriteR += 360;
+		}
+
+		if (spriteAngle >= spriteL && spriteAngle <= spriteR) {
+			/* add to visible sprite list */
+			if (es.nrOfVisibleSprites < MAX_VISIBLE_SPRITES) {
+				s->hwid = es.nrOfVisibleSprites;
+				struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
+
+				/* fix spriteAngle due to boundary checks */
+				if (spriteAngle >= 360)
+					spriteAngle -= 360;
+
+				hw_s->spriteAngle = spriteAngle;
+				es.visibleSpriteList[es.nrOfVisibleSprites++] = i;
+			}
+		}
+	}
+
+	/* sort in ascending order, closest sprite comes first */
+	GNOMESORT(es.visibleSpriteList, es.nrOfVisibleSprites, compareSpriteDistance, uint16_t);
+
+	/*
+	 * go through all visible sprites and precalc some rendering attributes and
+	 * assign hwid
+	 */
+	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
+		struct lightweight_sprite *s = &es.ld.lw_sprites[es.visibleSpriteList[i]];
+		struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
+
+		/* save sprite pointer */
+		/* reserve one page per sprite */
+
+		hw_s->p = spriteData_flashoffset  + (s->type * spriteDataAlignment);
+		/* add offset to skip mask */
+		hw_s->p += SPRITE_SIZE;
+
+		/*
+		 * calculate the side the player is looking at the sprite
+		 *   only do this if sprite is visible and not a simple one (e.g. item)
+		 */
+		if (!IS_SIMPLE(s->flags) && !IS_PROJECTILE(s->flags)) {
+			/*
+			 * calculate the angle the player is looking at the sprite
+			 */
+			/*
+			 *
+			 * angles the player will have to look at the
+			 * sprite in order to see the different sides
+			 *
+			 * 225 - (255 + 90) = front
+			 * 315 - (315 + 90) = right
+			 *  45 - ( 45 + 90) = back
+			 * 135 - (135 + 90) = left
+			 *
+			 * TODO could start with 45 and add 90 each turn
+			 *      that way we do not need an array but side
+			 *      value might get complicated
+			 * This is kind of bloated, maybe rethink it
+			 */
+			/* front right back left */
+			const uint16_t llimits[] = {225, 315, 45, 135};
+
+			for (uint8_t side = 0; side < 4; side++) {
+				uint16_t l, r;
+				l = llimits[side];
+				l += s->viewAngle;
+				r = l + 90;
+				if (l >= 360)
+					l -= 360;
+				if (r >= 360)
+					r -= 360;
+				if ((uint16_t)hw_s->spriteAngle >= l && (uint16_t)hw_s->spriteAngle < r) {
+					hw_s->vSide = side;
+					break;
+				}
+			}
+			/* add set offset for the correct side */
+			hw_s->p += SPRITE_SIZE * hw_s->vSide;
+		}
+
+		/*
+		 * precalculate some values to speed up rendering loop
+		 */
+		int16_t vSpriteMove = (int16_t)s->vMove;
+
+		/*
+		 * e.g. spriteheight is 32, so shift the sprite 16 pixel to the bottom
+		 * calculate sprite vertical move
+		 */
+		if (s->type >= V_OF_S(I_TYPE0))
+			vSpriteMove += es.itemDance;
+
+		vSpriteMove = vSpriteMove * (int16_t)DIST_TO_PROJECTION_PLANE / (int16_t)s->distance;
+
+		/*
+		 * read height, scale value from flash
+		 */
+		Cart::seekData(rayLengths_flashoffset + s->distance * 9);
+		hw_s->spriteDisplayHeight = Cart::readPendingUInt8();
+		hw_s->spriteDisplayHeight |= Cart::readPendingUInt8() << 8;
+		uint16_t scale = Cart::readPendingUInt8();
+		scale |= Cart::readPendingUInt8() << 8;
+
+		/* sprites are half the size of a regular sprite */
+		hw_s->spriteDisplayHeight /= 2;
+
+		/*
+		 * if spriteheight is bigger than screenheight we need to clip it
+		 * to screenheight and add the offset into the texture to texY
+		 *
+		 * take vSpriteMove into account otherwise sprite will be clipped
+		 * when sprite is outside of visible area
+		 *
+		 */
+		hw_s->screenY = (uint16_t)((int16_t)(SCREEN_HEIGHT - hw_s->spriteDisplayHeight) / 2 + vSpriteMove) + screenYStart;
+
+		/*
+		 * if the displayheight plus the screen y offset exceeds the
+		 * screenheight then we need to clip it
+		 */
+		if ((hw_s->spriteDisplayHeight + hw_s->screenY) > SCREEN_HEIGHT)
+			hw_s->spriteDisplayHeight = SCREEN_HEIGHT - hw_s->screenY;
+
+		/* clip wallHeight to the maximum of the screen height */
+		if (hw_s->spriteDisplayHeight > SCREEN_HEIGHT) {
+			if (hw_s->screenY < 0) {
+				hw_s->spriteDisplayHeight += hw_s->screenY;
+				if (hw_s->spriteDisplayHeight > SCREEN_HEIGHT)
+					hw_s->spriteDisplayHeight = SCREEN_HEIGHT;
+			} else {
+				if (hw_s->screenY < SCREEN_HEIGHT)
+					hw_s->spriteDisplayHeight = SCREEN_HEIGHT - hw_s->screenY;
+				else
+					hw_s->spriteDisplayHeight = 0;
+			}
+		}
+
+		/* deselect cart */
+		Cart::readEnd();
+	}
+
+}
+
+/*
+ * main render loop
+ */
+void Engine::render(void)
+{
+#if defined(CONFIG_FPS_MEASUREMENT)
+	unsigned long render_calc_start, render_calc;
+	unsigned long render_draw_start, render_draw;
+	unsigned long total_start, total = 0;
+	unsigned long drawing_start, drawing = 0;
+#endif
+#if defined(CONFIG_FPS_MEASUREMENT)
+	total_start = millis();
+#endif
+
+	/* check if we need to do damage to the player */
+	if ((es.frame % PLAYERS_DAMAGE_TIMEOUT) == 0) {
+		if (es.doDamageFlags & 1) {
+			/* wall damage */
+			es.blinkScreen = 1;
+			es.playerHealth -= 10;
+		}
+		es.doDamageFlags = 0;
+	}
+	/* player has been hit, indicate that with a white frame (or maybe led?) */
+	/* IDEA: pulse led when low on health? */
+	if (es.blinkScreen) {
+		es.blinkScreen = 0;
+
+		/* check if player is dead */
+		if (es.playerHealth <= 0) {
+			/* dead */
+			es.playerHealth = 0;
+		} else {
+			/* fill screen with white pixels */
+			arduboy->fillScreen(WHITE);
+			return;
+		}
+	}
+
+	/* calculate screen Y start depending on the head position */
+	int16_t screenYStart = (int16_t)((es.vHeadPosition >> 4) + vMove);
+
+	/* leftmost angle of the players current field of view */
+	int16_t playerFOVLeftAngle = es.ld.playerAngle - FIELD_OF_VIEW / 2;
+	if (playerFOVLeftAngle < 0)
+		playerFOVLeftAngle += 360;
+
+	/* move the player, list of blocks to ignore must be clean before this call */
+	move(es.ld.playerAngle, es.direction, &es.ld.playerX, &es.ld.playerY, PLAYERS_SPEED);
+
+	/*
+	 * update moveable objects, do this after moving the player so
+	 * in case a moveable object moves inside the minDistance area
+	 * the players position can be corrected
+	 */
+	updateMoveables();
+
+	/*
+	 * divide player x and y coordinate by the blocksize to get the
+	 * map x and y coordinate
+	 */
+	es.ld.playerMapX = divU16ByBlocksize(es.ld.playerX);
+	es.ld.playerMapY = divU16ByBlocksize(es.ld.playerY);
+
+	/*
+	 * cast rays
+	 */
+	rayAngle = playerFOVLeftAngle;
+
+#if defined(CONFIG_FPS_MEASUREMENT)
+	render_calc_start = millis();
+#endif
+	/* set rayinfo pointer and skip the first 64 columns as they are used for the map cache */
+	struct rayinfo *ri = (struct rayinfo *)(arduboy->getBuffer() + (512));
+
+	uint16_t maxRayLength = 0;
+
+	for (uint8_t ray = 0; ray < FIELD_OF_VIEW; ray++) {
+		/*
+		 *       1
+		 *     +---+
+		 *   0 |   | 2
+		 *     +---+
+		 *       3
+		 *
+		 *                                   h v
+		 * Q1: can hit sides 0 (v), 1 (h) -> 1,0
+		 * Q2: can hit sides 1 (h), 2 (v) -> 1,2
+		 * Q3: can hit sides 2 (v), 3 (h) -> 3,2
+		 * Q4: can hit sides 3 (h), 0 (v) -> 3,0
+		 *
+		 * 1   2   3   4
+		 * 1,0,1,2,3,2,3,0
+		 */
+
+		uint16_t hX = es.ld.playerX;
+		int16_t hStepX = 0;
+		int8_t hStepY;
+		uint16_t vY = es.ld.playerY;
+		int16_t vStepY = 0;
+		int8_t vStepX;
+		uint8_t blockSideIndex;
+		uint8_t hTextureOrientation;
+		uint8_t vTextureOrientation;
+
+		/*
+		 * handle every quadrant individually and calculate first horizontal/vertical
+		 * intersection
+		 */
+		if (rayAngle < 90) {
+			es.tempRayAngle = rayAngle;
+			es.nTempRayAngle = 90 - es.tempRayAngle;
+			/*
+			 * 0 .. 89 degree
+			 * calculate values for horizontal intersection test
+			 */
+			blockSideIndex = 0;
+
+			/* view direction down/right */
+			es.viewDirection = VD_DOWN_RIGHT;
+
+			hStepY = 1;
+			if (es.tempRayAngle != 0) {
+				/* result u16 inside () all u8 */
+				uint32_t dY = (uint32_t)(BLOCK_SIZE - (es.ld.playerY & (BLOCK_SIZE - 1))) * pgm_tanByX(es.nTempRayAngle);
+				hX += divU24ByBlocksize(dY);
+				hStepX = (int32_t)pgm_tanByX(es.nTempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			hTextureOrientation = TEXTURE_RIGHT_TO_LEFT;
+
+			/*
+			 * calculate values for vertical intersection test
+			 */
+			vStepX = 1;
+			if (es.tempRayAngle != 0) {
+				/* result u16 inside () all u8 */
+				uint32_t dX = (uint32_t)(BLOCK_SIZE - (es.ld.playerX & (BLOCK_SIZE - 1))) * pgm_tanByX(es.tempRayAngle);
+				vY += divU24ByBlocksize(dX);
+				vStepY = (int32_t)pgm_tanByX(es.tempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			vTextureOrientation = TEXTURE_LEFT_TO_RIGHT;
+
+		} else if (rayAngle < 180) {
+			es.tempRayAngle = 180 - rayAngle;
+			es.nTempRayAngle = 90 - es.tempRayAngle;
+			/*
+			 * 90 .. 179 degree
+			 * calculate values for horizontal intersection test
+			 */
+			blockSideIndex = 2;
+
+			/* view direction down/left */
+			es.viewDirection = VD_DOWN_LEFT;
+
+			hStepY = 1;
+
+			if (es.tempRayAngle != 90) {
+				/* result u16 inside () all u8 */
+				uint32_t dY = (uint32_t)(BLOCK_SIZE - (es.ld.playerY & (BLOCK_SIZE - 1))) * pgm_tanByX(es.nTempRayAngle);
+				hX -= divU24ByBlocksize(dY);
+				hStepX = (int32_t)-pgm_tanByX(es.nTempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			hTextureOrientation = TEXTURE_RIGHT_TO_LEFT;
+
+			/*
+			 * calculate values for vertical intersection test
+			 */
+			vStepX = -1;
+
+			if (es.tempRayAngle != 90) {
+				/* result u16 inside () all u8 */
+				uint32_t dX = (uint32_t)((es.ld.playerX & (BLOCK_SIZE - 1)) + 1) * pgm_tanByX(es.tempRayAngle);
+				vY += divU24ByBlocksize(dX);
+				vStepY = (int32_t)pgm_tanByX(es.tempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			vTextureOrientation = TEXTURE_RIGHT_TO_LEFT;
+
+		} else if (rayAngle < 270) {
+			es.tempRayAngle = rayAngle - 180;
+			es.nTempRayAngle = 90 - es.tempRayAngle;
+			/*
+			 * 180 .. 269 degree
+			 * calculate values for horizontal intersection test
+			 */
+			blockSideIndex = 4;
+
+			/* view direction down/left */
+			es.viewDirection = VD_UP_LEFT;
+
+			hStepY = -1;
+
+			if (es.tempRayAngle != 0) {
+				/* result u16 inside () all u8 */
+				uint32_t dY = (uint32_t)((es.ld.playerY & (BLOCK_SIZE - 1)) + 1) * pgm_tanByX(es.nTempRayAngle);
+				hX -= divU24ByBlocksize(dY);
+				hStepX = (int32_t)-pgm_tanByX(es.nTempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			hTextureOrientation = TEXTURE_LEFT_TO_RIGHT;
+
+			/*
+			 * calculate values for vertical intersection test
+			 */
+			vStepX = -1;
+
+			if (es.tempRayAngle != 0) {
+				/* result u16 inside () all u8 */
+				uint32_t dX = (uint32_t)((es.ld.playerX & (BLOCK_SIZE - 1)) + 1) * pgm_tanByX(es.tempRayAngle);
+				vY -= divU24ByBlocksize(dX);
+				vStepY = (int32_t)-pgm_tanByX(es.tempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			vTextureOrientation = TEXTURE_RIGHT_TO_LEFT;
+
+		} else {
+			es.tempRayAngle = 360 - rayAngle;
+			es.nTempRayAngle = 90 - es.tempRayAngle;
+			/*
+			 * 270 .. 359 degree
+			 * calculate values for horizontal intersection test
+			 */
+			blockSideIndex = 6;
+
+			/* view direction down/left */
+			es.viewDirection = VD_UP_RIGHT;
+
+			hStepY = -1;
+
+			if (es.tempRayAngle != 90) {
+				/* result u16 inside () all u8 */
+				uint32_t dY = (uint32_t)((es.ld.playerY & (BLOCK_SIZE - 1)) + 1) * pgm_tanByX(es.nTempRayAngle);
+				hX += divU24ByBlocksize(dY);
+				hStepX = (int32_t)pgm_tanByX(es.nTempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			hTextureOrientation = TEXTURE_LEFT_TO_RIGHT;
+
+			/*
+			 * calculate values for vertical intersection test
+			 */
+			vStepX = 1;
+
+			if (es.tempRayAngle != 90) {
+				/* result u16 inside () all u8 */
+				uint32_t dX = (uint32_t)(BLOCK_SIZE - (es.ld.playerX & (BLOCK_SIZE - 1))) * pgm_tanByX(es.tempRayAngle);
+				vY -= divU24ByBlocksize(dX);
+				// IDEA increase accuracy by generating a table with *BLOCK_SIZE
+				vStepY = (int32_t)-pgm_tanByX(es.tempRayAngle) * BLOCK_SIZE / BYX;
+			}
+
+			vTextureOrientation = TEXTURE_LEFT_TO_RIGHT;
+
+		}
+
+		/*
+		 * cast ray through the map, handle doors
+		 */
+		uint8_t blockSideInc;
+		uint32_t rayLength;
+		uint8_t tile;
+		int8_t wallX = 0, hWallX = 0, vWallX = 0;
+		uint16_t cosAngle;
+		uint16_t cosAngle2;
+		uint8_t textureOrientation;
+		uint8_t hBlockY = es.ld.playerMapY + hStepY;
+		uint8_t vBlockX = es.ld.playerMapX + vStepX;
+
+
+		cosAngle = pgm_fineCosByX(es.nTempRayAngle);
+		cosAngle2 = pgm_fineCosByX(es.tempRayAngle);
+
+		for (uint8_t run = 0; ; run++) {
+
+			uint16_t hRayLength;
+			uint16_t hRenderRayLength;
+			uint16_t vRayLength;
+			uint16_t vRenderRayLength;
+
+			/*
+			 * search horizontal intersections until a wall is hit
+			 */
+			uint8_t hTile = F0;
+
+			es.cd = NULL;
+			es.cmw = NULL;
+			es.ct = NULL;
+
+
+			if ((rayAngle != 0) && (rayAngle != 180)) {
+
+				uint16_t hY;
+				uint8_t hops = 0;
+				uint8_t hBlockX;
+
+				hBlockX = divU16ByBlocksize(hX);
+
+				/* reset render raylength and wallx */
+				es.renderRayLength = -1;
+				es.wallX = -1;
+
+				/*
+				 * Check for corner case if player is inside a block that
+				 * is not aligned to a BLOCK_SIZE boundary. This is the
+				 * case for e.g. moving walls which needs a dedicated renderer
+				 * when the player is close to them.
+				 */
+				hTile = checkIgnoreBlockInner(es.ld.playerMapX, es.ld.playerMapY, run);
+				if (hTile != F0) {
+					hRayLength = 1;
+					goto horizontal_intersection_done2;
+				}
+
+				hops = pgm_read_uint8(&hopsPerAngle[es.nTempRayAngle]);
+				while (((hBlockX | hBlockY) & 0xc0) == 0 && hops--) {
+					hTile = checkIgnoreBlockFast(hBlockX, hBlockY);
+					if (hTile) {
+						if (hTile == V_M_W) {
+							hY = hBlockY * BLOCK_SIZE;
+							if (hStepY < 0)
+								hY += BLOCK_SIZE - 1;
+							hTile = checkIfMovingWallHit(hBlockX, hBlockY, hX, hY);
+							if (hTile)
+								break;
+						} else {
+							break;
+						}
+					}
+
+					/* go to next horizontal intersection */
+					hBlockY += hStepY;
+					hX += hStepX;
+					hBlockX = divU16ByBlocksize(hX);
+				}
+
+horizontal_intersection_done2:
+				hY = hBlockY * BLOCK_SIZE;
+				if (hStepY < 0)
+					hY += BLOCK_SIZE - 1;
+
+				/* take whatever was calculated (or not) from the block functions */
+				hWallX = es.wallX;
+
+				/*
+				 * INFO: theoretically we should check for hTile != 0 but
+				 * practically all maps have a wall border
+				 */
+				uint16_t diffX;
+				if (es.ld.playerX < hX)
+					diffX = hX - es.ld.playerX;
+				else
+					diffX = es.ld.playerX - hX;
+
+				uint16_t diffY;
+				if (es.ld.playerY < hY)
+					diffY = hY - es.ld.playerY;
+				else
+					diffY = es.ld.playerY - hY;
+
+				/* use fine cosinus table to increase precision */
+				hRayLength  = ((uint32_t)diffY * cosAngle + (uint32_t)diffX * cosAngle2 + (FINE_BY_X / 2)) / FINE_BY_X;
+
+				if (hTile & HALF_BLOCKS_START) {
+					/*
+					 * horizontal door or half block
+					 *   add half step to x,y position
+					 */
+					uint16_t hStepRayLength = pgm_read_uint16(&stepRaylength[es.nTempRayAngle]);
+					if (hTile == H_DOOR)
+						hRenderRayLength = hRayLength + hStepRayLength / DOOR_STEP_DIV_BY;
+					else
+						hRenderRayLength = hRayLength + hStepRayLength / HALF_BLOCK_STEP_DIV_BY;
+				} else {
+					/*
+					 * some checkXXX functions set the renderRayLength (e.g. for
+					 * moving walls). In this case copy the value. In all other cases
+					 * set it to the same value as the real ray length
+					 */
+					if (es.renderRayLength != -1)
+						hRenderRayLength = es.renderRayLength;
+					else
+						hRenderRayLength = hRayLength;
+				}
+				/* remember the moving wall that was hit horizontally */
+				es.hcmw = es.cmw;
+				es.hcd = es.cd;
+				es.hct = es.ct;
+			}
+
+			/*
+			 * search vertical intersections until a wall is hit
+			 */
+			uint8_t vTile = F0;
+
+			if ((rayAngle != 90) && (rayAngle != 270)) {
+
+				uint8_t vBlockY;
+
+				vBlockY = divU16ByBlocksize(vY);
+
+				uint8_t hops = pgm_read_uint8(&hopsPerAngle[es.tempRayAngle]);
+				es.renderRayLength = -1;
+				es.wallX = -1;
+
+				while (((vBlockY | vBlockX) & 0xc0) == 0 && hops--) {
+					/* TODO can safely pass 0 for vX because this is only required
+					 * for horizontal hits, maybe think about which parameters are
+					 * really needed!
+					 */
+					vTile = checkIgnoreBlockFast(vBlockX, vBlockY);
+					if (vTile) {
+						if (vTile == V_M_W) {
+							vTile = checkIfMovingWallHit(vBlockX, vBlockY, 0, vY);
+							if (vTile)
+								break;
+						} else {
+							break;
+						}
+					}
+
+					vBlockX += vStepX;
+					vY += vStepY;
+
+					vBlockY = divU16ByBlocksize(vY);
+				}
+				/*
+				 * INFO: theoretically we should check for vTile != 0 but
+				 * practically all maps have a wall as border
+				 */
+				uint16_t vX = vBlockX * BLOCK_SIZE;
+				if (vStepX < 0)
+					vX += BLOCK_SIZE - 1;
+
+				/* take whatever was calculated (or not) from the block functions */
+				vWallX = es.wallX;
+
+				uint16_t diffX;
+				if (es.ld.playerX < vX)
+					diffX = vX - es.ld.playerX;
+				else
+					diffX = es.ld.playerX - vX;
+				uint16_t diffY;
+				if (es.ld.playerY < vY)
+					diffY = vY - es.ld.playerY;
+				else
+					diffY = es.ld.playerY - vY;
+
+				/* use fine cosinus table to increase precision */
+				vRayLength  = ((uint32_t)diffY * cosAngle + (uint32_t)diffX * cosAngle2 + (FINE_BY_X / 2)) / FINE_BY_X;
+
+				if (vTile & HALF_BLOCKS_START) {
+					/*
+					 * vertical door or half block
+					 *   add half step to x,y position
+					 */
+					uint16_t vStepRayLength = pgm_read_uint16(&stepRaylength[es.tempRayAngle]);
+					if (vTile == H_DOOR)
+						vRenderRayLength = vRayLength + vStepRayLength / DOOR_STEP_DIV_BY;
+					else
+						vRenderRayLength = vRayLength + vStepRayLength / HALF_BLOCK_STEP_DIV_BY;
+				} else {
+					/*
+					 * some checkXXX functions set the renderRayLength (e.g. for
+					 * moving walls). In this case copy the value. In all other cases
+					 * set it to the same value as the real ray length
+					 */
+					if (es.renderRayLength != -1)
+						vRenderRayLength = es.renderRayLength;
+					else
+						vRenderRayLength = vRayLength;
+				}
+				/* remember the moving wall that was hit vertically */
+				es.vcmw = es.cmw;
+				es.vcd = es.cd;
+				es.vct = es.ct;
+			}
+			/*
+			 * If horizontal rendering ray is shorter than the
+			 * vertical rendering ray, then pretend the vertical
+			 * ray is very long. This causes the the engine to
+			 * render the wall on the horizontal hit which is in
+			 * case of doors the texture that is making up the
+			 * door frame.
+			 */
+			if (hRenderRayLength < vRenderRayLength) {
+				vRayLength = 0xffff;
+			}
+			/*
+			 * same like above but for vertical rendering frames
+			 */
+			if (vRenderRayLength < hRenderRayLength) {
+				hRayLength = 0xffff;
+			}
+
+			/*
+			 * take shortest ray
+			 * let only the tile (h/v) of the shortest ray survive
+			 */
+
+			/*
+			 * if both rays are of equal length then prefer the vertical
+			 * ray otherwise moving walls are not rendered correctly
+			 */
+			if (hRayLength < vRayLength) {
+				blockSideInc = 0;
+				rayLength = hRenderRayLength;
+				textureOrientation = hTextureOrientation;
+
+				tile = hTile;
+
+				if (hWallX != -1) {
+					wallX = hWallX;
+				} else
+					wallX = hX % BLOCK_SIZE;
+
+				es.cmw = es.hcmw;
+				es.cd = es.hcd;
+				es.ct = es.hct;
+			} else {
+				blockSideInc = 1;
+				rayLength = vRenderRayLength;
+				textureOrientation = vTextureOrientation;
+				tile = vTile;
+
+				if (tile == V_M_W) {
+					wallX = vWallX;
+					/* if there is a renderRayLength then we hit the horizontal side */
+					if (es.renderRayLength != -1) {
+						blockSideInc = 0;
+						textureOrientation = hTextureOrientation;
+					}
+				} else
+					wallX = vY % BLOCK_SIZE;
+
+				es.cmw = es.vcmw;
+				es.cd = es.vcd;
+				es.ct = es.vct;
+
+				/* mark bit 7 to indicate we hit a vertical tile */
+				wallX |= 0x80;
+			}
+
+			if (rayLength > FOG_OF_WAR_DISTANCE) {
+				rayLength = FOG_OF_WAR_DISTANCE;
+				tile = FOG;
+				wallX = 0;
+				break;
+			}
+			/*
+			 * calculate wallX for doors
+			 */
+			int16_t diff;
+			uint8_t rayDiff;
+
+			/* check if this is an half block (e.g. door or a style element) */
+			if (tile & HALF_BLOCKS_START) {
+
+				if ((wallX & 0x80) == 0) {
+					/*
+					 * horizontal hit
+					 */
+					/*
+					 *                  +-----------------------+  ---
+					 *                  |                       |
+					 *                  |                       |
+					 *                  |                      /|   B
+					 *                  |                     / |   l
+					 *                  |   (real wallX)     /  |   o
+					 * (door texture)   +-------------------*---+   c
+					 *                  |                  /|   |   k
+					 *                  |                 / |   |
+					 *                  |      (rayDiff) /  |   |   1
+					 *                  |               /   |   |
+					 *                  |              /    |   |
+					 *                  +-------------*=====+---+  ---
+					 *                  |   (wallX)  /  diff    |
+					 *                  |           /           |
+					 *                  |          /            |   B
+					 *                  |         /             |   l
+					 *                  |        /              |   o
+					 *                  |       /               |   c
+					 *                  |      /                |   k
+					 *                  |     /                 |
+					 *                  |  P x                  |   2
+					 *                  |                       |
+					 *                  |                       |
+					 *                  +--+--------------------+  ---
+					 *
+					 * - from (x) to first (*) = ray length
+					 * - from (x) to second (*) = render ray length
+					 * - from left (+) to first (*) on the right = wallX based on the ray
+					 *
+					 */
+					rayDiff = hRenderRayLength - hRayLength;
+					diff = ((uint32_t)cosAngle2 * rayDiff) / FINE_BY_X;
+					if ((rayAngle >= 270) || (rayAngle < 90)) {
+						wallX += diff;
+					} else {
+						wallX -= diff;
+					}
+				} else {
+					/*
+					 * vertical hit
+					 */
+					/* clear vertical hit indicator bit */
+					wallX &= ~0x80;
+
+					rayDiff = vRenderRayLength - vRayLength;
+
+					diff = ((uint32_t)cosAngle * rayDiff) / FINE_BY_X;
+					if ((rayAngle >= 0) && (rayAngle < 180)) {
+						wallX += diff;
+					} else {
+						wallX -= diff;
+					}
+				}
+			} else {
+				/* clear vertical hit indicator bit */
+				wallX &= ~0x80;
+			}
+
+			/*
+			 * This ugly fix is required because the loss of precision due to the
+			 * fixed point calculation (byX) is causing some situations where rays
+			 * hit blocks that they would not hit during calculation on the paper.
+			 *
+			 * This causes for e.g. door frames the situation that the vertical ray
+			 * and the horizontal ray do not hit their blocks as expected and thus
+			 * frame rendering is not correct and might lead to visual artifacts.
+			 *
+			 * So wallX sometimes gets negative or bigger than the blocksize.
+			 */
+			/* FIXME: something is odd when this is required */
+			if (wallX < 0)
+				wallX = 0;
+			else
+				wallX &= BLOCK_SIZE - 1;
+
+			/* check if the ray can pass the door */
+			if (tile == H_DOOR) {
+				int8_t doorWallX = checkDoor(wallX);
+				if (doorWallX == -1)
+					continue;
+
+				/* take new doors texture x position */
+				wallX = doorWallX;
+				break;
+			} else {
+				break;
+			}
+		}
+		if (tile != FOG) {
+			/*
+			 * correct wall x positions depending on texture orientation
+			 */
+			if (textureOrientation == TEXTURE_RIGHT_TO_LEFT) {
+				wallX = (BLOCK_SIZE - 1) - wallX;
+			}
+
+			/* correct blockside index */
+			blockSideIndex += blockSideInc;
+
+			/*
+			 * correct fishbowl effect
+			 */
+			// TODO remove abs here
+			uint32_t tmp = (uint32_t)rayLength * pgm_fineCosByX(abs(FIELD_OF_VIEW / 2 - ray));
+			rayLength = tmp / FINE_BY_X;
+		}
+
+		/*
+		 * remember the maximum ray length where displaying sprites would make
+		 * sense
+		 */
+		if ((rayLength > maxRayLength) && ((rayLength < SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)))
+			maxRayLength = rayLength;
+		/*
+		 * save ray information into frame buffer
+		 *
+		 * The data is store columnwise starting at column 64 of the
+		 * framebuffer.
+		 */
+		ri->rayLength = rayLength;
+		ri->wallX = wallX;
+
+		uint8_t flags = blockSideIndex;
+
+		void *ptr;
+		if (tile == TRIGGER) {
+			ptr = (void *)es.ct;
+		} else if (tile == V_M_W) {
+			ptr = (void *)es.cmw;
+		} else if (tile == H_DOOR) {
+			ptr = (void *)es.cd;
+		} else {
+			ptr = NULL;
+		}
+		ri->ptr = ptr;
+		ri->flags = flags;
+		ri->tile = tile;
+
+		ri++;
+
+		/* increment ray angle */
+		rayAngle++;
+		if (rayAngle >= 360)
+			rayAngle -= 360;
+
+		/* clean list of blocks to ignore */
+		cleanIgnoreBlock();
+	}
+#if defined(CONFIG_FPS_MEASUREMENT)
+	render_calc = millis() - render_calc_start;
+#endif
+
+	/* update all sprites (items, enemies, projectiles) */
+	updateSprites(screenYStart, playerFOVLeftAngle, maxRayLength);
+
+#if defined(CONFIG_FPS_MEASUREMENT)
+	render_draw_start = millis();
+#endif
+
+	rayAngle = playerFOVLeftAngle;
+
+	/* set ray info pointer back to start */
+	ri = (struct rayinfo *)(arduboy->getBuffer() + (512));
+
+	for (ray = 0; ray < FIELD_OF_VIEW; ray++) {
+		/* decrement fire, on zero the weapon will fire */
+		es.fireCountdown--;
+
+		uint16_t rayLength = ri->rayLength;
+		uint8_t tile = ri->tile;
+		uint8_t wallX = ri->wallX;
+		uint8_t blockSideIndex = ri->flags & 0x7;
+
+		uint8_t texX; // TODO might need texWidth - texX in some cases, /2 as texturewidth is half the blocksize
+		uint24_t p;
+
+		/*
+		 * texture width is 32 but blocksize/wallX is 64, so divide by 2,
+		 * textures are stored columnwise so we need to multiply by height
+		 * in bytes (32 pixel high, 32 / 8= 4)
+		 */
+		texX = wallX / 2 * TEXTURE_HEIGHT_BYTES;
+
+		uint8_t side = xlateBlockHitToSide[blockSideIndex];
+		uint8_t block_id;
+		uint8_t textureIndexOffset = 0;
+
+		void *ptrValue = ri->ptr;
+
+		/*
+		 * memory that ri is pointing to is free here until the end of the loop
+		 * so use it for some rendering information meanwhile
+		 */
+		struct renderInfo *re = (struct renderInfo *)ri;
+		re->ystart = 0;
+		re->yend = SCREEN_HEIGHT;
+
+		ri++;
+
+		if (rayLength >= DIST_TO_PROJECTION_PLANE) {
+			/* TODO:
+			 *   simulate load of sky and floor from flash
+			 *   (this is about ~1.2ms of the drawing time)
+			 *   sky+floor is a 128x64px picture
+			 */
+			Cart::seekData(background_flashoffset + ray * 8);
+			/* copy the sky */
+			es.screenColumn[0] = Cart::readPendingUInt8();
+			es.screenColumn[1] = Cart::readPendingUInt8();
+			es.screenColumn[2] = Cart::readPendingUInt8();
+			es.screenColumn[3] = Cart::readPendingUInt8();
+			/* copy the floor */
+			es.screenColumn[4] = Cart::readPendingUInt8();
+			es.screenColumn[5] = Cart::readPendingUInt8();
+			es.screenColumn[6] = Cart::readPendingUInt8();
+			es.screenColumn[7] = Cart::readEnd();
+		}
+
+		/* handle sprites for this ray */
+		handleSprites(rayLength, playerFOVLeftAngle, re);
+
+
+		if (tile == V_M_W) {
+			struct movingWall *cmw = (struct movingWall *)ptrValue;
+			/*
+			 * for moving walls we take the block id and not the
+			 * tile number as the latter one is the same for all
+			 * moving walls
+			 */
+			block_id = cmw->block_id;
+		} else if (tile == H_DOOR) {
+			struct door *cd = (struct door *)ptrValue;
+			/*
+			 * for doors we take the block id and not the tile
+			 * number as the latter one is the same for all doors
+			 */
+			block_id = cd->flags >> 4;
+		} else if (tile == TRIGGER) {
+			struct trigger *ct = (struct trigger *)ptrValue;
+			/*
+			 * for triggers we take the block id and not the tile
+			 * number as the latter one is the same for all triggers
+			 */
+			block_id = ct->block_id;
+			/* depending on the triggers state the texture changes */
+			textureIndexOffset = ct->flags & 1;
+		} else {
+			/*
+			 * for regualar tiles we take the tile number as block
+			 * id for the textures
+			 *
+			 * (clear half block indicator bit)
+			 */
+			block_id = (tile & 0x1f) - 1; //(0x1f & ~HALF_BLOCKS_START)) - 1;
+		}
+		uint8_t textureIndex = blockTextures[block_id * 4 + side] + textureIndexOffset;
+
+		p = textureData_flashoffset + (textureIndex * textureDataAlignment);
+
+		/*
+		 * BLOCK_SIZE / rayLength * DIST_TO_PROJECTION_PLANE
+		 * raylength min = 10
+		 * raylength max = 65536
+		 * wallHeight = 6528
+		 * wallHeight min = 6528 / 65536 = 0 = MIN_WALL_HEIGHT
+		 * wallHeight max = 6528 / 10 = 652
+		 */
+#ifdef CONFIG_LOD
+		Cart::seekData(rayLengths_flashoffset + rayLength * 9);
+		uint16_t wallHeight = Cart::readPendingUInt8();
+		wallHeight |= Cart::readPendingUInt8() << 8;
+		uint16_t scale = Cart::readPendingUInt8();
+		scale |= Cart::readPendingUInt8() << 8;
+		/* TODO this is only required for scale up */
+		uint8_t px_base = Cart::readPendingUInt8();
+
+		/* select texture depending on level of detail */
+		if (wallHeight < TEXTURE_HEIGHT) {
+			/* if texture is smaller than real height */
+			scale /= 2;
+			p += TEXTURE_SIZE; /* skip size 1 texture */
+			texX = wallX / 4 * 2;  /* 64 / 4 = 16 (*2 because 16bits in height) */
+		} else if (wallHeight < (TEXTURE_HEIGHT / 2)) {
+			/* if texture is smaller than real height / 2 */
+			scale /= 4;
+			p += TEXTURE_SIZE + TEXTURE_SIZE / 4; /* skip size 1 and 2 texture */
+			texX = wallX / 8;  /* 64 / 8 = 8 */
+		}
+
+		/* deselect cart */
+		Cart::readEnd();
+#endif
+		/* TODO read effect id from table */
+		uint8_t effect = textureEffects[block_id] & 0xf;
+
+		// remove this for walls
+		memset(es.texColumn, 0xff, 4);
+
+		if (tile == FOG) {
+			memset(&es.texColumn[4], 0xff, 4);
+		} else {
+			/* load texture (flash access) */
+			if (effect == 0)
+				textureEffectNone(p, texX);
+			else if (effect == 1)
+				textureEffectRotateLeft(p, texX);
+		}
+#ifdef RAY32_DEBUG
+		if (ray == 32)
+			memset(es.texColumn, 0xff, 4);
+#endif
+		/* handle walls for this ray */
+		if ((ray_mask[ray / 8] & (1 << (ray % 8))) == 0) {
+
+			/* skip wallHeight, scale and px_base */
+#ifdef CONFIG_LOD
+			Cart::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
+#else
+			Cart::seekData(rayLengths_flashoffset + rayLength * 9);
+			uint16_t wallHeight = Cart::readPendingUInt8();
+			wallHeight |= Cart::readPendingUInt8() << 8;
+			uint16_t scale = Cart::readPendingUInt8();
+			scale |= Cart::readPendingUInt8() << 8;
+			/* TODO this is only required for scale up */
+			uint8_t px_base = Cart::readPendingUInt8();
+#endif
+			/**************************************************************
+			 *
+			 * draw texture onto the wall
+			 *
+			 * find x coordinate of the texture
+			 *   + textures are always 32x32 pixels in size
+			 */
+			int16_t screenY;
+
+			screenY = (SCREEN_HEIGHT - (int16_t)wallHeight) / 2 + screenYStart;
+
+			/**************************************************************
+			 *
+			 * draw vertical slice of the texture
+			 *
+			 * handle horizontal doors
+			 *
+			 *
+			 * IDEA remember rendered columns per tile/texX/texX -> wallHeight
+			 * per tile - > wallHeight -> (texX, texY)
+			 *
+			 *
+			 * just the regular wall textures
+			 */
+			/*
+			 * only draw textures when wall is close enough
+			 * as details are anyway not visible at this resolution
+			 */
+			if (wallHeight >= MIN_WALL_HEIGHT) {
+				// TODO the scale up algorithm is really only fast if min scale up is x2
+
+				/* clip wallHeight to the maximum of the screen height */
+				if (wallHeight > SCREEN_HEIGHT) {
+					if (screenY < 0) {
+						wallHeight += screenY;
+						if (wallHeight > SCREEN_HEIGHT)
+							wallHeight = SCREEN_HEIGHT;
+					} else {
+						if (screenY < SCREEN_HEIGHT)
+							wallHeight = SCREEN_HEIGHT - screenY;
+						else
+							wallHeight = 0;
+					}
+				}
+
+				if (scale < TEXTURE_SCALE_UP_LIMIT)
+					drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
+				else
+					drawAll(screenY, scale, wallHeight, re);
+			} else {
+
+				drawNoTexture(screenY, wallHeight, re);
+			}
+			/* deselect cart */
+			Cart::readEnd();
+		}
+
+		/* copy current screen column into next column */
+		unsigned char *buffer = arduboy->getBuffer() + (ray * 2 * HEIGHT_BYTES);
+		/* manually unrolled */
+		*buffer++ = es.screenColumn[0];
+		*buffer++ = es.screenColumn[1];
+		*buffer++ = es.screenColumn[2];
+		*buffer++ = es.screenColumn[3];
+		*buffer++ = es.screenColumn[4];
+		*buffer++ = es.screenColumn[5];
+		*buffer++ = es.screenColumn[6];
+		buffer++; /* [7] is HUD */
+		*buffer++ = es.screenColumn[0];
+		*buffer++ = es.screenColumn[1];
+		*buffer++ = es.screenColumn[2];
+		*buffer++ = es.screenColumn[3];
+		*buffer++ = es.screenColumn[4];
+		*buffer++ = es.screenColumn[5];
+		*buffer   = es.screenColumn[6];
+
+		/* increment ray angle */
+		rayAngle++;
+		if (rayAngle >= 360)
+			rayAngle -= 360;
+	}
+
+#if defined(CONFIG_FPS_MEASUREMENT)
+	drawing_start = millis();
+	render_draw = drawing_start - render_draw_start;
+#endif
+
+	memset(ray_mask, 0, sizeof(ray_mask));
+
+	/***************************************************************
+	 *
+	 * display players weapon
+	 */
+	drawBitmap(56,
+		   42 - (es.weaponVisibleOffset >> 4),
+		   player_weapons_flashoffset + (es.playerActiveWeapon * 96)  + (es.rectOffset / 16 *32),
+		   16, 16, WHITE);
+
+	/***************************************************************
+	 *
+	 * display HUD (Heads Up Display)
+	 *   + main HUD image is already loaded to display buffer by displayPrefetch
+	 *
+	 */
+	/* first HUD portion of currently selected weapon */
+	drawBitmap(0, 56, icons_hud_weapon_flashoffset + (es.playerActiveWeapon * 24), 24, 8, WHITE);
+	/* display health */
+	drawNumber(62, 56, es.playerHealth);
+	/* display ammo of current weapon */
+	drawNumber(37, 56, es.playerAmmo[es.playerActiveWeapon]);
+
+
+	/***************************************************************
+	 *
+	 * update timeouts
+	 *
+	 */
+	/* countdown until weapon can be changed again */
+	if (es.weaponChangeCooldown != 0) {
+		es.weaponChangeCooldown--;
+	}
+
+	/* countdown until status message disappears */
+	if (es.statusMessage.timeout) {
+		es.statusMessage.timeout--;
+		drawString(1, 0, es.statusMessage.text);
+	}
+
+	/* next frame */
+	es.frame++;
+#ifdef CONFIG_FPS_MEASUREMENT
+	drawing = millis() - drawing_start;
+#endif
+#ifdef AUDIO
+	/* handle audio */
+	struct audio_effect *ae = &audioEffects[0];
+	const uint8_t *sound;
+
+	/* environments */
+	switch (ae->trigger) {
+	case AUDIO_EFFECT_TRIGGER_START:
+		break;
+	}
+	ae->trigger = 0;
+	ae++;
+
+	/* weapon */
+	switch (ae->trigger) {
+	case AUDIO_EFFECT_TRIGGER_START:
+		// TODO depending on ae->data select sfx
+		atm_synth_play_sfx_track(OSC_CH_2, 0, (const uint8_t*)&sfx1);
+		break;
+	}
+	ae->trigger = 0;
+	ae++;
+
+	/* map */
+	switch (ae->trigger) {
+	case AUDIO_EFFECT_TRIGGER_START:
+		// TODO depending on ae->data select sfx
+		sound = (const uint8_t *)pgm_read_ptr(&mapSounds[ae->data]);
+		atm_synth_play_sfx_track(OSC_CH_3, 0, sound); //(const uint8_t*)&sfx2);
+		break;
+	}
+	ae->trigger = 0;
+	ae++;
+
+	/* music */
+	switch (ae->trigger) {
+	case AUDIO_EFFECT_TRIGGER_START:
+		break;
+	default:
+		/* check if score is still player and restart if not */
+		if (!atm_synth_is_score_playing())
+			atm_synth_start_score((const uint8_t*)&score);
+		break;
+	}
+	ae->trigger = 0;
+#endif
+
+	/* evaluate quests */
+	evaluateActiveQuest();
+
+	/* determine current game state */
+	if (es.playerHealth == 0) {
+		/* player is dead */
+		setSystemEvent(EVENT_PLAYER_DEAD, es.killedBySprite);
+	}
+#if defined(CONFIG_FPS_MEASUREMENT)
+	total = millis() - total_start;
+#endif
+#if defined(CONFIG_FPS_MEASUREMENT)
+	drawNumber(10, 56, render_calc);
+	drawNumber(85, 56, render_draw);
+	drawNumber(100, 56, drawing);
+	drawNumber(115, 56, total);
+#endif
+}

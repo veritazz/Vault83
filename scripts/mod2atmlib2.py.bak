@@ -1,0 +1,656 @@
+#!/usr/bin/python3
+
+import math, struct
+#
+# c-dur tone ladder
+#
+# |c|cis|d|dis|e|f|fis|g|gis|a|ais|h|
+#
+#
+# cis = c * 1.059
+# c = cis / 1.059
+#
+
+################################
+# c d e f g g
+# 4 4 4 4 2 2
+#
+# a a a a g
+# 4 4 4 4 1
+#
+# a a a a g
+# 4 4 4 4 1
+#
+# f f f f e e
+# 4 4 4 4 2 2
+#
+# g g g g c
+# 4 4 4 4 1
+################################
+
+# framerate 16000Hz (period time 1/16000Hz = 0.0000625s)
+# standard pitch for A = 440Hz
+#
+# phase increment of 16bit phase accumulator Q8.8
+#
+# c2 = 65.4Hz
+#
+# Number of steps for one period with 16bits phase accumulator
+#   2^16 / phaseinc = s
+#
+# Time needed for one period at the given framerate
+#   s * 1 / fr = t
+#   s / fr = t
+#   s = fr * t (solved for s)
+#
+# Frequency of the note is
+#   1 / t = f
+#   t = 1 / f (solved for t)
+#
+# Put the formulas together
+#
+#   phaseinc = 2^16 / s
+#   phaseinc = 2^16 / (fr * t)
+#   phaseinc = 2^16 / (fr * (1 / f))
+#   phaseinc = 2^16 / (fr / f)
+#
+
+
+
+#	ATM_CMD_I_NOTE_OFF = 0,
+#
+#	ATM_CMD_I_NOTE_C2,
+#	ATM_CMD_I_NOTE_C2_,
+#	ATM_CMD_I_NOTE_D2,
+#	ATM_CMD_I_NOTE_D2_,
+#	ATM_CMD_I_NOTE_E2,
+#	ATM_CMD_I_NOTE_F2,
+#	ATM_CMD_I_NOTE_F2_,
+#	ATM_CMD_I_NOTE_G2,
+#	ATM_CMD_I_NOTE_G2_,
+#	ATM_CMD_I_NOTE_A2,
+#	ATM_CMD_I_NOTE_A2_,
+#	ATM_CMD_I_NOTE_B2,
+#
+#	ATM_CMD_I_NOTE_C3,
+#	ATM_CMD_I_NOTE_C3_,
+#	ATM_CMD_I_NOTE_D3,
+#	ATM_CMD_I_NOTE_D3_,
+#	ATM_CMD_I_NOTE_E3,
+#	ATM_CMD_I_NOTE_F3,
+#	ATM_CMD_I_NOTE_F3_,
+#	ATM_CMD_I_NOTE_G3,
+#	ATM_CMD_I_NOTE_G3_,
+#	ATM_CMD_I_NOTE_A3,
+#	ATM_CMD_I_NOTE_A3_,
+#	ATM_CMD_I_NOTE_B3,
+#
+#	ATM_CMD_I_NOTE_C4,
+#	ATM_CMD_I_NOTE_C4_,
+#	ATM_CMD_I_NOTE_D4,
+#	ATM_CMD_I_NOTE_D4_,
+#	ATM_CMD_I_NOTE_E4,
+#	ATM_CMD_I_NOTE_F4,
+#	ATM_CMD_I_NOTE_F4_,
+#	ATM_CMD_I_NOTE_G4,
+#	ATM_CMD_I_NOTE_G4_,
+#	ATM_CMD_I_NOTE_A4,
+#	ATM_CMD_I_NOTE_A4_,
+#	ATM_CMD_I_NOTE_B4,
+#
+#	ATM_CMD_I_NOTE_C5,
+#	ATM_CMD_I_NOTE_C5_,
+#	ATM_CMD_I_NOTE_D5,
+#	ATM_CMD_I_NOTE_D5_,
+#	ATM_CMD_I_NOTE_E5,
+#	ATM_CMD_I_NOTE_F5,
+#	ATM_CMD_I_NOTE_F5_,
+#	ATM_CMD_I_NOTE_G5,
+#	ATM_CMD_I_NOTE_G5_,
+#	ATM_CMD_I_NOTE_A5,
+#	ATM_CMD_I_NOTE_A5_,
+#	ATM_CMD_I_NOTE_B5,
+#
+#	ATM_CMD_I_NOTE_C6,
+#	ATM_CMD_I_NOTE_C6_,
+#	ATM_CMD_I_NOTE_D6,
+#	ATM_CMD_I_NOTE_D6_,
+#	ATM_CMD_I_NOTE_E6,
+#	ATM_CMD_I_NOTE_F6,
+#	ATM_CMD_I_NOTE_F6_,
+#	ATM_CMD_I_NOTE_G6,
+#	ATM_CMD_I_NOTE_G6_,
+#	ATM_CMD_I_NOTE_A6,
+#	ATM_CMD_I_NOTE_A6_,
+#	ATM_CMD_I_NOTE_B6,
+#
+#	ATM_CMD_I_NOTE_C7,
+#	ATM_CMD_I_NOTE_C7_,
+#	ATM_CMD_I_NOTE_D7,
+#
+#	/* Use as ATM_CMD_I_DELAY_1_TICK+[num-ticks] e.g. ATM_CMD_I_DELAY_1_TICK+3 for 4 ticks */
+#	ATM_CMD_I_DELAY_1_TICK = 64,
+#
+#
+#
+#
+#ATM_CMD_M_NOTE(note) (note)
+#ATM_CMD_M_DELAY_TICKS(delay)   # delay <= 32
+#ATM_CMD_M_DELAY_TICKS_1(delay) # delay <= 256
+#ATM_CMD_M_DELAY_TICKS_2(delay) # delay < 65535
+#ATM_CMD_M_CALL(pattern_index)
+#ATM_CMD_M_CALL_REPEAT(pattern_index, repeat_count)
+#ATM_CMD_M_GLISSANDO_ON(p1)
+#ATM_CMD_M_ARPEGGIO_ON(p1, p2)
+#ATM_CMD_M_NOTECUT_ON(p1)
+#ATM_CMD_M_SET_WAVEFORM(p1)
+#ATM_CMD_M_SET_TRANSPOSITION(p1)
+#ATM_CMD_M_ADD_TRANSPOSITION(p1)
+#ATM_CMD_M_SET_TEMPO(p1)
+#ATM_CMD_M_ADD_TEMPO(p1)
+#ATM_CMD_M_SET_VOLUME(p1)
+#ATM_CMD_M_SET_MOD(p1)
+#ATM_CMD_M_SET_LOOP_PATTERN(p1)
+#ATM_CMD_M_SLIDE_VOL_ON(p1)
+#ATM_CMD_M_SLIDE_FREQ_ON(p1)
+#ATM_CMD_M_SLIDE_MOD_ON(p1)
+#ATM_CMD_M_SLIDE_VOL_OFF
+#ATM_CMD_M_SLIDE_FREQ_OFF
+#ATM_CMD_M_SLIDE_MOD_OFF
+#ATM_CMD_M_SLIDE_VOL_ADV_ON(p1, p2)
+#ATM_CMD_M_SLIDE_FREQ_ADV_ON(p1, p2)
+#ATM_CMD_M_SLIDE_MOD_ADV_ON(p1, p2)
+#ATM_CMD_M_SLIDE_VOL_ADV_OFF
+#ATM_CMD_M_SLIDE_FREQ_ADV_OFF
+#ATM_CMD_M_SLIDE_MOD_ADV_OFF
+#ATM_CMD_M_TREMOLO_ON(depth, rate)
+#ATM_CMD_M_VIBRATO_ON(depth, rate)
+#ATM_CMD_M_MOD_LFO_ON(depth, rate)
+#ATM_CMD_M_TREMOLO_OFF
+#ATM_CMD_M_VIBRATO_OFF
+#ATM_CMD_M_MOD_LFO_OFF
+
+#
+# ATM_CMD_M_SET_TEMPO(?) ?? --- default tempo in atm2lib is 25
+# ATM_CMD_M_SET_VOLUME(?) ??
+# ATM_CMD_M_SET_VOLUME(64), --- what is the default volume (seems 0)
+# TODO create patterns for empty channels or just create score with number of channels and select wave (stop?)
+# ATM_CMD_I_NOTE_OFF
+# ATM_CMD_I_STOP
+# ATM_CMD_M_SET_WAVEFORM(square, noise
+#
+#
+
+
+noteNames = [
+	"ATM_CMD_I_NOTE_C2",
+	"ATM_CMD_I_NOTE_C2_",
+	"ATM_CMD_I_NOTE_D2",
+	"ATM_CMD_I_NOTE_D2_",
+	"ATM_CMD_I_NOTE_E2",
+	"ATM_CMD_I_NOTE_F2",
+	"ATM_CMD_I_NOTE_F2_",
+	"ATM_CMD_I_NOTE_G2",
+	"ATM_CMD_I_NOTE_G2_",
+	"ATM_CMD_I_NOTE_A2",
+	"ATM_CMD_I_NOTE_A2_",
+	"ATM_CMD_I_NOTE_B2",
+
+	"ATM_CMD_I_NOTE_C3",
+	"ATM_CMD_I_NOTE_C3_",
+	"ATM_CMD_I_NOTE_D3",
+	"ATM_CMD_I_NOTE_D3_",
+	"ATM_CMD_I_NOTE_E3",
+	"ATM_CMD_I_NOTE_F3",
+	"ATM_CMD_I_NOTE_F3_",
+	"ATM_CMD_I_NOTE_G3",
+	"ATM_CMD_I_NOTE_G3_",
+	"ATM_CMD_I_NOTE_A3",
+	"ATM_CMD_I_NOTE_A3_",
+	"ATM_CMD_I_NOTE_B3",
+
+	"ATM_CMD_I_NOTE_C4",
+	"ATM_CMD_I_NOTE_C4_",
+	"ATM_CMD_I_NOTE_D4",
+	"ATM_CMD_I_NOTE_D4_",
+	"ATM_CMD_I_NOTE_E4",
+	"ATM_CMD_I_NOTE_F4",
+	"ATM_CMD_I_NOTE_F4_",
+	"ATM_CMD_I_NOTE_G4",
+	"ATM_CMD_I_NOTE_G4_",
+	"ATM_CMD_I_NOTE_A4",
+	"ATM_CMD_I_NOTE_A4_",
+	"ATM_CMD_I_NOTE_B4",
+
+	"ATM_CMD_I_NOTE_C5",
+	"ATM_CMD_I_NOTE_C5_",
+	"ATM_CMD_I_NOTE_D5",
+	"ATM_CMD_I_NOTE_D5_",
+	"ATM_CMD_I_NOTE_E5",
+	"ATM_CMD_I_NOTE_F5",
+	"ATM_CMD_I_NOTE_F5_",
+	"ATM_CMD_I_NOTE_G5",
+	"ATM_CMD_I_NOTE_G5_",
+	"ATM_CMD_I_NOTE_A5",
+	"ATM_CMD_I_NOTE_A5_",
+	"ATM_CMD_I_NOTE_B5",
+
+	"ATM_CMD_I_NOTE_C6",
+	"ATM_CMD_I_NOTE_C6_",
+	"ATM_CMD_I_NOTE_D6",
+	"ATM_CMD_I_NOTE_D6_",
+	"ATM_CMD_I_NOTE_E6",
+	"ATM_CMD_I_NOTE_F6",
+	"ATM_CMD_I_NOTE_F6_",
+	"ATM_CMD_I_NOTE_G6",
+	"ATM_CMD_I_NOTE_G6_",
+	"ATM_CMD_I_NOTE_A6",
+	"ATM_CMD_I_NOTE_A6_",
+	"ATM_CMD_I_NOTE_B6",
+
+	"ATM_CMD_I_NOTE_C7",
+	"ATM_CMD_I_NOTE_C7_",
+	"ATM_CMD_I_NOTE_D7",
+]
+
+fxCmdToName = {
+	0x0: "Arpeggio",
+	0x1: "Portamento up",	
+	0x2: "Portamento down",	
+	0x3: "Portamento to note",	
+	0x4: "Vibrato",	
+	0x5: "Portamento to note with volume slide",	
+	0x6: "Vibrato with volume slide",	
+	0x7: "Temolo",
+	0x8: "Set note panning position",
+	0x9: "Sample offset",
+	0xa: "Volume slide",
+	0xb: "Jump to order",
+	0xc: "Set not volume",
+	0xd: "Pattern break",
+	0xe: "Subcommands",
+	0xf: "Set song speed"
+}	
+
+songFilePrologue = """#ifndef %s_H
+#define %s_H
+
+#include \"atm_cmd_constants.h\"
+
+#ifndef ARRAY_SIZE
+#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
+#endif
+
+#ifndef NUM_PATTERNS
+#define NUM_PATTERNS(struct_) (ARRAY_SIZE( ((struct_ *)0)->patterns_offset))
+#endif
+
+#ifndef DEFINE_PATTERN
+#define DEFINE_PATTERN(pattern_id, values) const uint8_t pattern_id[] = values;
+#endif
+
+"""
+
+songFileEpilogue = """
+#endif
+"""
+
+
+structBaseDefinition = """const PROGMEM struct %s_data {
+	uint8_t fmt;
+	uint8_t num_patterns;
+	uint16_t patterns_offset[%u];
+	uint8_t num_channels;
+	uint8_t start_patterns[%u];
+"""
+
+channelWaveforms = [
+	0, # square
+	0, # square
+	0, # square
+	1, # noise
+]
+
+# default volume for each channel in ??
+defaultVolume = [
+	64,
+	64,
+	64,
+	64,
+]
+
+# default tempo for each channel in Hz
+defaultTempo = [
+	50,
+	50,
+	50,
+	50,
+]
+
+emptyPatternDefinition = """\tATM_CMD_I_NOTE_OFF, \\
+\tATM_CMD_I_STOP, \\
+"""
+
+#
+# one pattern per channel
+#
+# ATM_CMD_M_CALL(patternXX_chYY)
+# ...
+# ATM_CMD_I_NOTE_OFF,
+# ATM_CMD_I_STOP,
+#
+#
+
+#const PROGMEM struct score_data {
+#  uint8_t fmt;
+#  uint8_t num_patterns;
+#  uint16_t patterns_offset[8];
+#  uint8_t num_channels;
+#  uint8_t start_patterns[4];
+#  uint8_t pattern0[sizeof(pattern0_array)];
+#  uint8_t pattern1[sizeof(pattern1_array)];
+#  uint8_t pattern2[sizeof(pattern2_array)];
+#  uint8_t pattern3[sizeof(pattern3_array)];
+#  uint8_t pattern4[sizeof(pattern4_array)];
+#  uint8_t pattern5[sizeof(pattern5_array)];
+#  uint8_t pattern6[sizeof(pattern6_array)];
+#  uint8_t pattern7[sizeof(pattern7_array)];
+#} score = {
+#  .fmt = ATM_SCORE_FMT_FULL,
+#  .num_patterns = NUM_PATTERNS(struct score_data),
+#  .patterns_offset = {
+#      offsetof(struct score_data, pattern0),
+#      offsetof(struct score_data, pattern1),
+#      offsetof(struct score_data, pattern2),
+#      offsetof(struct score_data, pattern3),
+#      offsetof(struct score_data, pattern4),
+#      offsetof(struct score_data, pattern5),
+#      offsetof(struct score_data, pattern6),
+#      offsetof(struct score_data, pattern7),
+#  },
+#  .num_channels = 4,
+#  .start_patterns = {
+#    0x02,                         // Channel 0 entry track (PULSE)
+#    0x01,                         // Channel 1 entry track (SQUARE)
+#    0x00,                         // Channel 2 entry track (TRIANGLE)
+#    0x03,                         // Channel 3 entry track (NOISE)
+#  },
+#  .pattern0 = pattern0_data,
+#  .pattern1 = pattern1_data,
+#  .pattern2 = pattern2_data,
+#  .pattern3 = pattern3_data,
+#  .pattern4 = pattern4_data,
+#  .pattern5 = pattern5_data,
+#  .pattern6 = pattern6_data,
+#  .pattern7 = pattern7_data,
+#};
+
+def defineDelayTicks(ticks):
+	if ticks <= 32:
+		return ("\tATM_CMD_M_DELAY_TICKS(%u), \\\n" % (ticks))
+	if ticks <= 256:
+		return ("\tATM_CMD_M_DELAY_TICKS_1(%u), \\\n" % (ticks))
+
+	return ("\tATM_CMD_M_DELAY_TICKS_2(%u), \\\n" % (ticks))
+
+#
+# period to note
+#
+def periodToNote(period):
+	if period > 1712 or period == 0:
+		return None
+
+	print("period %u" % period)
+
+	# C2, C2_, D2, D2_, E2, F2, F2_, G2, G2_, A2, A2_, B2
+	periodTable = [
+		1712, 1616, 1524, 1440, 1356, 1280, 1208, 1140, 1076, 1016,  960,  907,
+		856,  808,  762,  720,  678,  640,  604,  570,  538,  508,  480,  453,
+		428,  404,  381,  360,  339,  320,  302,  285,  269,  254,  240,  226,
+		214,  202,  190,  180,  170,  160,  151,  143,  135,  127,  120,  113,
+		107,  101,   95,   90,   85,   80,   75,   71,   67,   63,   60,   56,
+		53,   50,   47,   45,   42,   40,   37,   35,   33,   31,   30,   28
+	]
+	i = periodTable.index(period)
+	print(i, period, noteNames[i])
+	return i
+
+
+currentEffect = [None, None, None, None]
+currentNote = [None, None, None, None]
+
+#
+#
+#
+def stopFxCommand(channel):
+	currentFx = currentEffect[channel]
+
+	if currentFx == None:
+		return ""
+
+	currentEffect[channel] = None
+
+	if currentFx[0] == 0:
+		return "\tATM_CMD_I_ARPEGGIO_OFF, \\\n"
+
+	return ""
+
+#
+#
+#
+def convertFxCommand(channel, fxCmd, fxData):
+	global currentEffect
+	print(fxCmd, fxData)
+	# arpeggio
+	# needs to be repeated, 
+	# each note is played 1 tick, each entry counts for 6 ticks (tempo)
+	# keep counting ticks until fxCmd or fxData changes, then write back
+	# notecmd, fxcmd, delayticks (auto repeat always on
+	currentFx = currentEffect[channel]
+	if fxCmd == 0:
+		if fxData == 0:
+			return None
+
+		fxCmdString = ""
+		if (currentFx != None) and (fxCmd != currentFx[0] or fxData != currentFx[1]):
+			# stop previous FX
+			fxCmdString = stopFxCommand(channel)
+		# TODO stop is broken, should stop on new note, no new command if no change!
+		# set new FX
+		currentEffect[channel] = (fxCmd, fxData)
+		# decode new FX
+		p2 = 0
+		if (fxData & 0x0f) == 0:
+			p2 |= 0x40 # skip 3rd note
+		# add new FX
+		return fxCmdString + "\tATM_CMD_M_ARPEGGIO_ON(0x%2.2x, 0x%2.2x), \\\n" % (fxData, p2)
+
+	return None
+
+#
+# count ticks, if 6 then next row
+#
+def convertPattern(pattern, number, rows=64):
+	global currentEffect
+
+	ticks = [ 0, 0, 0, 0]
+	# reset current effects
+	currentEffect = [None, None, None, None]
+	channelPatternAvailable = [False, False, False, False]
+	patterns = ["", "", "", ""]
+	for row in range(rows):
+		for channel in range(4):
+			tmp = pattern[row][channel][0]
+			instrument = (tmp >> 12) & 0xf
+			period = tmp & 0xfff
+			tmp = pattern[row][channel][1]
+			instrument = (instrument << 4) | ((tmp >> 4) & 0xf)
+			fxCmd = tmp & 0xf
+			fxData = pattern[row][channel][2]
+
+			# decode FX command
+			# TODO
+
+			newNote = periodToNote(period)
+			if newNote != None:
+				# write back ticks if any
+				if ticks[channel]:
+					patterns[channel] += defineDelayTicks(ticks[channel])
+				ticks[channel] = 0
+				# stop fx
+				fx = stopFxCommand(channel)
+				patterns[channel] += fx
+				# write back new note
+				patterns[channel] += ("\t%s, \\\n" % (noteNames[newNote]))
+				channelPatternAvailable[channel] = True
+				currentNote[channel] = newNote
+			else:
+				fx = stopFxCommand(channel)
+				if len(fx):
+					# write back ticks if any
+					if ticks[channel]:
+						patterns[channel] += defineDelayTicks(ticks[channel])
+					ticks[channel] = 0
+
+					patterns[channel] += fx
+
+			fx = convertFxCommand(channel, fxCmd, fxData)
+			if fx != None:
+				# write back ticks if any
+				if ticks[channel]:
+					patterns[channel] += defineDelayTicks(ticks[channel])
+				ticks[channel] = 0
+				# write back new note
+				patterns[channel] += fx
+				channelPatternAvailable[channel] = True
+
+			# TODO if not note cut/off
+			ticks[channel] += 6
+
+	# add defines for pattern data and write back remaining ticks
+	for channel in range(4):
+		print(ticks[channel])
+		if channelPatternAvailable[channel] == False:
+			patterns[channel] = ""
+		else:
+			# write back ticks if any
+			if ticks[channel]:
+				patterns[channel] += defineDelayTicks(ticks[channel])
+			patterns[channel] += "\tATM_CMD_I_RETURN, \\\n"
+			baseName = "pattern%u_ch%u" % (number, channel)
+			patterns[channel] = ("#define %s_data { \\\n" % (baseName)) + patterns[channel]
+			patterns[channel] += "}\n"
+			patterns[channel] += "DEFINE_PATTERN(%s_array, %s_data);\n\n" % (baseName, baseName)
+
+	return patterns
+
+
+if __name__ == "__main__":
+	songFile = ""
+	with open('test_arpeggio.mod', 'rb') as modfile:
+		songTitle = modfile.read(20)
+		fileSongTitle = songTitle.decode().strip("\0").replace(" ", "_")
+		samples = []
+		for sample in range(31):
+			name, length, finetune, volume, loopStart, loopLength = struct.unpack('>22sHBBHH', modfile.read(30))
+			print(name, sample)
+			samples.append({'name': name.decode()})
+		songLength, = struct.unpack('>B', modfile.read(1))
+		restart, = struct.unpack('>B', modfile.read(1))
+		patternSequence = modfile.read(128)
+		tag = struct.unpack('>4s', modfile.read(4))
+
+		patterns = []
+		for pattern in range(songLength):
+			patterns.append([])
+			for row in range(64):
+				patterns[pattern].append([])
+				for channel in range(4):
+					patterns[pattern][row].append(struct.unpack('>HBB', modfile.read(4)))
+
+
+		print("Title: %s [%s]" % (songTitle.decode(), songTitle.hex()))
+		for sample in range(31):
+			print("S[%2.2d] %s" % (sample, samples[sample]['name']))
+		print("Song Length: %u patterns" % (songLength))
+		print("Restart Byte: %u patterns" % (restart))
+		print("Pattern Sequence: %s patterns" % (patternSequence.hex()))
+		print("Tag: %s" % (tag))
+
+		# set score name
+		scoreName = fileSongTitle
+		#
+		# now convert all patterns to ATMlib2 scores
+		#
+		patternEpilogue = "\tATM_CMD_I_NOTE_OFF, \\\n\tATM_CMD_I_STOP, \\\n"
+		channelPatterns = [patternEpilogue, patternEpilogue, patternEpilogue, patternEpilogue]
+		channelActive = [False, False, False, False]
+		numPatterns = 0
+		structPatternDefinition = ""
+		structPatternOffsets = ""
+		structDataDefinition = ""
+		for pattern in range(songLength):
+			p = convertPattern(patterns[pattern], pattern)
+			for channel in range(4):
+				if len(p[channel]) == 0:
+					# pattern did not contain anything
+					continue
+				else:
+					songFile += p[channel]
+					channelActive[channel] = True
+					baseName = "pattern%u_ch%u" % (pattern, channel)
+					channelPatterns[channel] = ("\tATM_CMD_M_CALL(%u), \\\n" % numPatterns) + channelPatterns[channel]
+					structPatternDefinition += "\tuint8_t pattern%u[sizeof(%s_array)];\n" % (numPatterns, baseName)
+					structPatternOffsets += "\t\toffsetof(struct %s_data, pattern%u),\n" % (scoreName, numPatterns)
+					structDataDefinition += "\t.pattern%u = %s_data,\n" % (numPatterns, baseName)
+					numPatterns += 1
+
+		# add defines for pattern data
+		structStartPatterns = ""
+		for channel in range(4):
+			# TODO should use pattern id from channel
+			baseName = "pattern%u_ch%u" % (songLength, channel)
+
+			if channelActive[channel] == False:
+				channelPatterns[channel] = emptyPatternDefinition
+				#structStartPatterns += "\t\t0,\n"
+				#continue
+			else:
+				# select waveform
+				channelPatterns[channel] = ("\tATM_CMD_M_SET_WAVEFORM(%u), \\\n" % channelWaveforms[channel]) + channelPatterns[channel]
+
+				channelPatterns[channel] = ("\tATM_CMD_M_SET_TEMPO(%u), \\\n" % defaultTempo[channel]) + channelPatterns[channel]
+				channelPatterns[channel] = ("\tATM_CMD_M_SET_VOLUME(%u), \\\n" % defaultVolume[channel]) + channelPatterns[channel]
+
+			channelPatterns[channel] = ("#define %s_data { \\\n" % (baseName)) + channelPatterns[channel]
+			channelPatterns[channel] += "}\n"
+			channelPatterns[channel] += "DEFINE_PATTERN(%s_array, %s_data);\n\n" % (baseName, baseName)
+			structPatternDefinition += "\tuint8_t pattern%u[sizeof(%s_array)];\n" % (numPatterns, baseName)
+			structPatternOffsets += "\t\toffsetof(struct %s_data, pattern%u),\n" % (scoreName, numPatterns)
+			structDataDefinition += "\t.pattern%u = %s_data,\n" % (numPatterns, baseName)
+			structStartPatterns += "\t\t%u,\n" % (numPatterns)
+			numPatterns += 1
+			songFile += channelPatterns[channel]
+
+		# write score data structure
+		structDefinition  = structBaseDefinition % (scoreName, numPatterns, 4)
+		structDefinition += structPatternDefinition
+		structDefinition += "} %s = {\n" % (scoreName)
+		structDefinition += "\t.fmt = ATM_SCORE_FMT_FULL,\n"
+		structDefinition += "\t.num_patterns = NUM_PATTERNS(struct %s_data),\n" % (scoreName)
+		structDefinition += "\t.patterns_offset = {\n"
+		structDefinition += structPatternOffsets
+		structDefinition += "\t},\n"
+		structDefinition += "\t.num_channels = %u,\n" % (4)
+		structDefinition += "\t.start_patterns = {\n"
+		structDefinition += structStartPatterns
+		structDefinition += "\t},\n"
+		structDefinition += structDataDefinition
+		structDefinition += "};\n"
+		songFile += structDefinition
+
+	# write back to file
+	with open('testSong.h', 'w') as songfile:
+		songfile.write(songFilePrologue % (fileSongTitle.upper(), fileSongTitle.upper()))
+		songfile.write(songFile)
+		songfile.write(songFileEpilogue)

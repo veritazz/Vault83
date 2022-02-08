@@ -1,0 +1,20 @@
+#include <stddef.h>
+#include "EngineData.h"
+
+#define _ASMDEFINE(sym, val) asm volatile \
+		("\n-> " #sym " %0 \n" : : "i" (val))
+
+#define ASMDEFINE(s, m) \
+	_ASMDEFINE(offsetof_##s##_##m, offsetof(s, m));
+
+
+void dummy() {
+	ASMDEFINE(engineState, screenColumn);
+	ASMDEFINE(engineState, texColumn);
+
+	ASMDEFINE(renderInfo, ystart);
+	ASMDEFINE(renderInfo, yend);
+}
+
+//avr-c++ -S src/EngineData.cpp -o - | gawk '($1 == "->") { print "#define " $2 " " $3 }' > myStruct_offsets.h
+//avr-c++ -x c++ -S src/EngineData.offsets -o - | gawk '($1 == "->") { print "#define " $2 " " $3 }' > myStruct_offsets.h

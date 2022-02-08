@@ -1,0 +1,94 @@
+#
+# sprite data
+#
+spriteData,,pad
+spriteDataAlignment, 256, constexpr_u16
+sprite-barrel.bin, sprite-barrel.txt, pad
+sprite-spider.bin, sprite-spider.txt, pad
+enemy-1.bin, enemy-1.txt, pad
+enemy-2.bin, enemy-2.txt, pad
+enemy-3.bin, enemy-3.txt, pad
+enemy-4.bin, enemy-4.txt, pad
+item-key-1.bin, item-key-1.txt, pad
+item-weapon-2.bin, item-weapon-2.txt, pad
+item-weapon-3.bin, item-weapon-3.txt, pad
+item-weapon-4.bin, item-weapon-4.txt, pad
+item-health-1.bin, item-health-1.txt, pad
+item-ammo-1.bin, item-ammo-1.txt, pad
+#
+# misc image data
+#
+characters_3x4.bin, characters_3x4.txt, pad
+hud.bin, hud.txt, pad
+icons-hud-weapon.bin, icons-hud-weapon.txt, pad
+item-weapon-1.bin, item-weapon-1.txt, pad
+mainscreen.bin, mainscreen.txt, pad
+menu_arrow.bin, menu_arrow.txt, pad
+player-weapons.bin, player-weapons.txt, pad
+background.bin, background.txt, pad
+hud_special.bin, hud_special.txt, pad
+#
+# texture data
+#
+textureData,,pad
+textureDataAlignment, 192, constexpr_u8
+texture-wall-1.bin, texture-wall-1.txt, pad 192
+texture-wall-2.bin, texture-wall-2.txt, pad 192
+texture-wall-3.bin, texture-wall-3.txt, pad 192
+texture-wall-4.bin, texture-wall-4.txt, pad 192
+texture-wall-5.bin, texture-wall-5.txt, pad 192
+texture-wall-6.bin, texture-wall-6.txt, pad 192
+texture-wall-7.bin, texture-wall-7.txt, pad 192
+texture-wall-8.bin, texture-wall-8.txt, pad 192
+texture-wall-9.bin, texture-wall-9.txt, pad 192
+texture-door-frame.bin, texture-door-frame.txt, pad 192
+texture-door-1.bin, texture-door-1.txt, pad 192
+wall32x32.bin, wall32x32.txt,
+wall16x16.bin, wall16x16.txt,
+wall8x8.bin, wall8x8.txt, pad 192
+#
+# dialog data
+#
+dialogs,,pad
+quests,,pad
+dialog-00.bin,dialog-00.txt, pad 1024
+dialog-01.bin,dialog-01.txt, pad 1024
+#
+# message strings
+#
+messageStrings,,pad
+messageStringsAlignment, 32, constexpr_u8
+msg_key_collected.txt,, pad 32
+msg_weapon1_collected.txt,, pad 32
+msg_weapon2_collected.txt,, pad 32
+msg_weapon3_collected.txt,, pad 32
+msg_ammo_collected.txt,, pad 32
+msg_health_collected.txt,, pad 32
+msg_door_needs_key.txt,, pad 32
+msg_door_needs_trigger.txt,, pad 32
+msg_quest_pending.txt,, pad 32
+#
+# menu strings
+#
+menuStrings,,pad
+str_menu.txt,, pad 32
+str_credits.txt,, pad 32
+str_dead.txt,, pad 32
+#
+# level data
+#
+levelDataAlignment, 6144, constexpr_u16
+levelData,, pad 6144
+level1.bin,level1.txt, pad 6144
+level2.bin,level2.txt, pad 6144
+#
+# special walls data
+#
+specialWallsDataAlignment, 128, constexpr_u16
+specialWallsData,, pad 128
+level1_specialWalls.bin,, pad 128
+level2_specialWalls.bin,, pad 128
+#
+# some tables
+#
+rayLengths.bin,,pad

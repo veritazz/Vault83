@@ -1,0 +1,42 @@
+﻿{
+  "schemaVersion": 3,
+  "title": "1889 Demo",
+  "author": "Team 1889",
+  "version": "1.0",
+  "date": "2019-07-28",
+  "genre": "demo",
+  "binaries": [
+    {
+      "title": "1889 - Day Zero Demo",
+      "filename": "demo.hex",
+      "flashdata": "demo.bin",
+      "device": "ArduboyFX"
+    }
+  ],
+  "buttons": [
+    {
+      "control": "Up",
+      "action": "Move"
+    },
+    {
+      "control": "Down",
+      "action": "move"
+    },
+    {
+      "control": "Left",
+      "action": "move"
+    },
+    {
+      "control": "Right",
+      "action": "move"
+    },
+    {
+      "control": "A",
+      "action": "action"
+    },
+    {
+      "control": "B",
+      "action": "shoot"
+    }
+  ]
+}

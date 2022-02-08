@@ -1,0 +1,10 @@
+# Add terminal screen where the player can read some story
+# Add shooting walls
+
+# Add Save/Load game support
+# add menu option for sound on/off, music on/off
+
+# Add teleporter?
+# Add sector based sprite handling?
+# Add sprite respawn
+# Fix stencil buffer
