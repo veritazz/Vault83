@@ -6,7 +6,7 @@
 #include <Arduboy2.h>
 
 #ifndef CART_PORT
-#if 0 /* old ArduboyFX demo platform */
+#ifdef CONFIG_FX_DEMO_PLATFORM /* old ArduboyFX demo platform */
   #define CART_PORT PORTD
   #define CART_BIT PORTD2
 #else
