@@ -13,6 +13,7 @@ Clone the following two repositories into the *lib* directory:
 ```
 https://github.com/veritazz/Arduboy2.git (branch fps_development)
 https://github.com/veritazz/ATMlib2.git (branch veritazz-wip)
+https://github.com/veritazz/Arduboy-Python-Utilities.git (branch master)
 ```
 
 After that the datafile for the flash memory should be created. The script that creates it will
@@ -39,4 +40,12 @@ platformio run
 ```
 
 Now *.pio/build/leonardo/firmware.hex*  and the data file *data-output/Vault83.bin* can be
-added to a flashcart collection
+added to a flashcart collection.
+
+For development purposes the data file and the program file can be uploaded the following
+way:
+
+```
+./update_data.sh
+platformio run --target upload
+```
