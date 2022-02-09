@@ -23,6 +23,15 @@ sound and maps do not change the below step needs to be done only once:
 ./create_data.sh
 ```
 
+Note: Because this project uses assembly files it is required to generate offset definitions for
+some data structures. So each time a structure in EngineData.h is changed, the following script
+must be called so the assembly offsets match the code. This needs to be done only when the file
+EngineData.h was changed.:
+
+```
+./generate_asm_offsets.sh
+```
+
 To build the program file run
 
 ```
