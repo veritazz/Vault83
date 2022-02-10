@@ -4279,22 +4279,6 @@ horizontal_intersection_done2:
 		 * as details are anyway not visible at this resolution
 		 */
 		if (wallHeight >= MIN_WALL_HEIGHT) {
-			// TODO the scale up algorithm is really only fast if min scale up is x2
-
-			/* clip wallHeight to the maximum of the screen height */
-			if (wallHeight > SCREEN_HEIGHT) {
-				if (screenY < 0) {
-					wallHeight += screenY;
-					if (wallHeight > SCREEN_HEIGHT)
-						wallHeight = SCREEN_HEIGHT;
-				} else {
-					if (screenY < SCREEN_HEIGHT)
-						wallHeight = SCREEN_HEIGHT - screenY;
-					else
-						wallHeight = 0;
-				}
-			}
-
 			if (scale < TEXTURE_SCALE_UP_LIMIT)
 				drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
 			else
