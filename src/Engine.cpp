@@ -137,14 +137,14 @@ void Engine::init(void)
 	 */
 	uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * currentLevel);
 
-	Cart::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT), (uint8_t *)&es.ld, (size_t)sizeof(struct level_initdata));
+	FX::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT), (uint8_t *)&es.ld, (size_t)sizeof(struct level_initdata));
 
 	es.ld.playerAngle = 59;
 
 #ifndef CONFIG_ASM_OPTIMIZATIONS
 	levelFlashOffset = levelOffset;
 #else
-	levelFlashOffset = ((uint24_t)Cart::programDataPage << 8) + levelOffset;
+	levelFlashOffset = ((uint24_t)FX::programDataPage << 8) + levelOffset;
 #endif
 
 
@@ -505,7 +505,7 @@ void Engine::setStatusMessage(uint8_t msg_id)
  */
 void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, uint8_t h, uint8_t color)
 {
-	Cart::seekData(bitmap);
+	FX::seekData(bitmap);
 
 	unsigned char *buffer = arduboy->getBuffer() + (x * HEIGHT_BYTES);
 
@@ -559,7 +559,7 @@ void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, 
 			buffer += HEIGHT_BYTES;
 		}
 	}
-	Cart::readEnd();
+	FX::readEnd();
 }
 
 uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
@@ -576,8 +576,8 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 	for (;;) {
 		/* TODO combination of both for faster single byte reads */
 		/* speed it up by storing the string as image */
-		Cart::seekData(message++);
-		c = Cart::readEnd();
+		FX::seekData(message++);
+		c = FX::readEnd();
 		if (!c)
 			break;
 
@@ -588,13 +588,13 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 		else
 			c -= 'W';
 
-		Cart::seekData(characters_3x4_flashoffset + (c * 3));
+		FX::seekData(characters_3x4_flashoffset + (c * 3));
 
-		v = Cart::readPendingUInt8();
+		v = FX::readPendingUInt8();
 		buffer[0] = v >> 1;
-		v = Cart::readPendingUInt8();
+		v = FX::readPendingUInt8();
 		buffer[HEIGHT_BYTES * 1] = v >> 1;
-		v = Cart::readEnd();
+		v = FX::readEnd();
 		buffer[HEIGHT_BYTES * 2] = v >> 1;
 		buffer[HEIGHT_BYTES * 3] = 0;
 
@@ -616,13 +616,13 @@ void Engine::drawNumber(uint8_t x, uint8_t y, uint8_t number)
 
 	while (divider) {
 		digit = number / divider;
-		Cart::seekData(characters_3x4_flashoffset + (digit * 3));
-		v = Cart::readPendingUInt8();
+		FX::seekData(characters_3x4_flashoffset + (digit * 3));
+		v = FX::readPendingUInt8();
 
 		buffer[0] |= v;
-		v = Cart::readPendingUInt8();
+		v = FX::readPendingUInt8();
 		buffer[8] |= v;
-		v = Cart::readEnd();
+		v = FX::readEnd();
 		buffer[16] |= v;
 
 		buffer += 32;
@@ -998,11 +998,11 @@ void Engine::texturesExchangeLeftRight(uint8_t offset)
  */
 void Engine::textureEffectNone(const uint24_t p, uint8_t texX)
 {
-	Cart::seekData(p + texX);
-	es.texColumn[4] = Cart::readPendingUInt8();
-	es.texColumn[5] = Cart::readPendingUInt8();
-	es.texColumn[6] = Cart::readPendingUInt8();
-	es.texColumn[7] = Cart::readEnd();
+	FX::seekData(p + texX);
+	es.texColumn[4] = FX::readPendingUInt8();
+	es.texColumn[5] = FX::readPendingUInt8();
+	es.texColumn[6] = FX::readPendingUInt8();
+	es.texColumn[7] = FX::readEnd();
 }
 
 void Engine::textureEffectVFlip(const uint24_t p, uint8_t texX)
@@ -1015,11 +1015,11 @@ void Engine::textureEffectHFlip(const uint24_t p, uint8_t texX)
 
 void Engine::textureEffectInvert(const uint24_t p, uint8_t texX)
 {
-	Cart::seekData(p + texX);
-	es.texColumn[4] = ~Cart::readPendingUInt8();
-	es.texColumn[5] = ~Cart::readPendingUInt8();
-	es.texColumn[6] = ~Cart::readPendingUInt8();
-	es.texColumn[7] = ~Cart::readEnd();
+	FX::seekData(p + texX);
+	es.texColumn[4] = ~FX::readPendingUInt8();
+	es.texColumn[5] = ~FX::readPendingUInt8();
+	es.texColumn[6] = ~FX::readPendingUInt8();
+	es.texColumn[7] = ~FX::readEnd();
 }
 
 void Engine::textureEffectRotateLeft(const uint24_t p, uint8_t texX)
@@ -1049,29 +1049,29 @@ void Engine::updateSpecialWalls(void)
 		shootingWallCoolDown--;
 
 	if (shootingWallCoolDown == 0) {
-		Cart::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
-		uint8_t maxSpecialWalls = Cart::readPendingUInt8();
+		FX::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
+		uint8_t maxSpecialWalls = FX::readPendingUInt8();
 
 		for (uint8_t p = MAX_SPRITES - MAX_PROJECTILES; p < (MAX_SPRITES - MAX_PROJECTILES + maxSpecialWalls); p++) {
 			struct lightweight_sprite *s = &es.ld.lw_sprites[p];
 			if (!IS_INACTIVE(s->flags)) {
 				/* TODO what a waste, maybe seek? */
-				Cart::readPendingUInt8();
-				Cart::readPendingUInt8();
-				Cart::readPendingUInt8();
+				FX::readPendingUInt8();
+				FX::readPendingUInt8();
+				FX::readPendingUInt8();
 				continue;
 			}
 
 			/* set active and type projectile */
-			s->x = Cart::readPendingUInt8() * 64 - 16;
-			s->y = Cart::readPendingUInt8() * 64 + 32;
-			s->flags = Cart::readPendingUInt8();
+			s->x = FX::readPendingUInt8() * 64 - 16;
+			s->y = FX::readPendingUInt8() * 64 + 32;
+			s->flags = FX::readPendingUInt8();
 			s->distance = 0xffff;
 			s->viewAngle = ((s->flags >> 2) & 0x3) * 90;
 			s->flags &= F_MASK;
 			break;
 		}
-		Cart::readEnd();
+		FX::readEnd();
 	}
 }
 
@@ -2163,8 +2163,8 @@ uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
 #ifndef CONFIG_ASM_OPTIMIZATIONS
 uint8_t Engine::checkIgnoreBlock(uint8_t mapX, uint8_t mapY)
 {
-	Cart::seekData(levelFlashOffset + (MAP_WIDTH * mapY + mapX));
-	return Cart::readEnd();
+	FX::seekData(levelFlashOffset + (MAP_WIDTH * mapY + mapX));
+	return FX::readEnd();
 }
 #endif
 
@@ -2925,19 +2925,19 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 			 */
 			uint24_t p = hw_s->p;
 
-			Cart::seekData(p + texX);
+			FX::seekData(p + texX);
 			/* load the sprite mask from flash */
-			es.texColumn[0] = Cart::readPendingUInt8();
-			es.texColumn[1] = Cart::readPendingUInt8();
+			es.texColumn[0] = FX::readPendingUInt8();
+			es.texColumn[1] = FX::readPendingUInt8();
 			/* load the sprite data from flash */
-			es.texColumn[4] = Cart::readPendingUInt8();
-			es.texColumn[5] = Cart::readEnd();
+			es.texColumn[4] = FX::readPendingUInt8();
+			es.texColumn[5] = FX::readEnd();
 
 			/* read scale and px_base from flash (+2 to skip the wallHeight field) */
-			Cart::seekData(rayLengths_flashoffset + 2 + s->distance * 9);
-			uint16_t scale = Cart::readPendingUInt8();
-			scale |= Cart::readPendingUInt8() << 8;
-			uint8_t px_base = Cart::readPendingUInt8();
+			FX::seekData(rayLengths_flashoffset + 2 + s->distance * 9);
+			uint16_t scale = FX::readPendingUInt8();
+			scale |= FX::readPendingUInt8() << 8;
+			uint8_t px_base = FX::readPendingUInt8();
 
 			uint8_t dh = hw_s->spriteDisplayHeight;
 
@@ -2949,7 +2949,7 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 			}
 
 			/* deselect cart */
-			Cart::readEnd();
+			FX::readEnd();
 
 			/*
 			 * shooting will happen in the middle of the screen (64 rays / 2 = 32)
@@ -3317,11 +3317,11 @@ void Engine::updateSprites(int16_t screenYStart, int16_t fovLeft, uint16_t maxRa
 		/*
 		 * read height, scale value from flash
 		 */
-		Cart::seekData(rayLengths_flashoffset + s->distance * 9);
-		hw_s->spriteDisplayHeight = Cart::readPendingUInt8();
-		hw_s->spriteDisplayHeight |= Cart::readPendingUInt8() << 8;
-		uint16_t scale = Cart::readPendingUInt8();
-		scale |= Cart::readPendingUInt8() << 8;
+		FX::seekData(rayLengths_flashoffset + s->distance * 9);
+		hw_s->spriteDisplayHeight = FX::readPendingUInt8();
+		hw_s->spriteDisplayHeight |= FX::readPendingUInt8() << 8;
+		uint16_t scale = FX::readPendingUInt8();
+		scale |= FX::readPendingUInt8() << 8;
 
 		/* sprites are half the size of a regular sprite */
 		hw_s->spriteDisplayHeight /= 2;
@@ -3358,7 +3358,7 @@ void Engine::updateSprites(int16_t screenYStart, int16_t fovLeft, uint16_t maxRa
 		}
 
 		/* deselect cart */
-		Cart::readEnd();
+		FX::readEnd();
 	}
 
 }
@@ -4135,17 +4135,17 @@ horizontal_intersection_done2:
 			 *   (this is about ~1.2ms of the drawing time)
 			 *   sky+floor is a 128x64px picture
 			 */
-			Cart::seekData(background_flashoffset + ray * 8);
+			FX::seekData(background_flashoffset + ray * 8);
 			/* copy the sky */
-			es.screenColumn[0] = Cart::readPendingUInt8();
-			es.screenColumn[1] = Cart::readPendingUInt8();
-			es.screenColumn[2] = Cart::readPendingUInt8();
-			es.screenColumn[3] = Cart::readPendingUInt8();
+			es.screenColumn[0] = FX::readPendingUInt8();
+			es.screenColumn[1] = FX::readPendingUInt8();
+			es.screenColumn[2] = FX::readPendingUInt8();
+			es.screenColumn[3] = FX::readPendingUInt8();
 			/* copy the floor */
-			es.screenColumn[4] = Cart::readPendingUInt8();
-			es.screenColumn[5] = Cart::readPendingUInt8();
-			es.screenColumn[6] = Cart::readPendingUInt8();
-			es.screenColumn[7] = Cart::readEnd();
+			es.screenColumn[4] = FX::readPendingUInt8();
+			es.screenColumn[5] = FX::readPendingUInt8();
+			es.screenColumn[6] = FX::readPendingUInt8();
+			es.screenColumn[7] = FX::readEnd();
 		}
 
 		if (tile == V_M_W) {
@@ -4194,13 +4194,13 @@ horizontal_intersection_done2:
 		 * wallHeight max = 6528 / 10 = 652
 		 */
 #ifdef CONFIG_LOD
-		Cart::seekData(rayLengths_flashoffset + rayLength * 9);
-		uint16_t wallHeight = Cart::readPendingUInt8();
-		wallHeight |= Cart::readPendingUInt8() << 8;
-		uint16_t scale = Cart::readPendingUInt8();
-		scale |= Cart::readPendingUInt8() << 8;
+		FX::seekData(rayLengths_flashoffset + rayLength * 9);
+		uint16_t wallHeight = FX::readPendingUInt8();
+		wallHeight |= FX::readPendingUInt8() << 8;
+		uint16_t scale = FX::readPendingUInt8();
+		scale |= FX::readPendingUInt8() << 8;
 		/* TODO this is only required for scale up */
-		uint8_t px_base = Cart::readPendingUInt8();
+		uint8_t px_base = FX::readPendingUInt8();
 
 		/* select texture depending on level of detail */
 		if (wallHeight < TEXTURE_HEIGHT) {
@@ -4216,7 +4216,7 @@ horizontal_intersection_done2:
 		}
 
 		/* deselect cart */
-		Cart::readEnd();
+		FX::readEnd();
 #endif
 		/* TODO read effect id from table */
 		uint8_t effect = textureEffects[block_id] & 0xf;
@@ -4240,15 +4240,15 @@ horizontal_intersection_done2:
 
 		/* skip wallHeight, scale and px_base */
 #ifdef CONFIG_LOD
-		Cart::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
+		FX::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
 #else
-		Cart::seekData(rayLengths_flashoffset + rayLength * 9);
-		uint16_t wallHeight = Cart::readPendingUInt8();
-		wallHeight |= Cart::readPendingUInt8() << 8;
-		uint16_t scale = Cart::readPendingUInt8();
-		scale |= Cart::readPendingUInt8() << 8;
+		FX::seekData(rayLengths_flashoffset + rayLength * 9);
+		uint16_t wallHeight = FX::readPendingUInt8();
+		wallHeight |= FX::readPendingUInt8() << 8;
+		uint16_t scale = FX::readPendingUInt8();
+		scale |= FX::readPendingUInt8() << 8;
 		/* TODO this is only required for scale up */
-		uint8_t px_base = Cart::readPendingUInt8();
+		uint8_t px_base = FX::readPendingUInt8();
 #endif
 		/**************************************************************
 		 *
@@ -4304,7 +4304,7 @@ horizontal_intersection_done2:
 			drawNoTexture(screenY, wallHeight, re);
 		}
 		/* deselect cart */
-		Cart::readEnd();
+		FX::readEnd();
 
 		/* handle sprites for this ray */
 		handleSprites(rayLength, playerFOVLeftAngle, re);

@@ -6,6 +6,8 @@
 #include "tables.h"
 #include "leveldata.h"
 
+#include <ArduboyFX.h>
+
 #ifdef AUDIO
 #include <ATMlib2.h>
 #include "song.h"
@@ -37,10 +39,10 @@ static uint8_t next_frame(void)
 
 static void finish_frame(uint8_t clear)
 {
-	Cart::disable();
-	Cart::enableOLED();
+	FX::disable();
+	FX::enableOLED();
 	arduboy.display(clear);
-	Cart::disableOLED();
+	FX::disableOLED();
 }
 
 /*---------------------------------------------------------------------------
@@ -53,8 +55,8 @@ void setup(void)
 #ifdef SERIAL_DEBUG
 	Serial.begin(9600);
 #endif
-	Cart::disableOLED();
-	Cart::begin(0xFF74);
+	FX::disableOLED();
+	FX::begin(0xFF74);
 
 #ifdef AUDIO
 	/* enable Audio */
@@ -425,5 +427,5 @@ void loop(void)
 	 * which consists of 0xff except for the last line which is the HUD already
 	 * drawn
 	 */
-	Cart::displayPrefetch(hud_special_flashoffset, Arduboy2::sBuffer, 1024, false);
+	FX::displayPrefetch(hud_special_flashoffset, Arduboy2::sBuffer, 1024, false);
 }

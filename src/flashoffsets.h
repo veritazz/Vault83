@@ -1,7 +1,7 @@
 #ifndef __FLASHOFFSETS_H
 #define __FLASHOFFSETS_H
 
-#include "cart.h"
+#include <ArduboyFX.h>
 
 constexpr uint24_t spriteData_flashoffset                   = 0x000000;
 constexpr uint16_t spriteDataAlignment                      = 0x0100;

@@ -14,6 +14,7 @@ Clone the following repositories into the *lib* directory:
 https://github.com/veritazz/Arduboy2.git (branch fps_development)
 https://github.com/veritazz/ATMlib2.git (branch veritazz-wip)
 https://github.com/veritazz/Arduboy-Python-Utilities.git (branch master)
+https://github.com/veritazz/Arduboy-homemade-package.git (branch master)
 ```
 
 After that the datafile for the flash memory should be created. The script that creates it will
