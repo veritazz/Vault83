@@ -8,7 +8,7 @@ Install platformio as described here
 
 http://docs.platformio.org/en/latest/installation.html#installation-methods
 
-Clone the following two repositories into the *lib* directory:
+Clone the following repositories into the *lib* directory:
 
 ```
 https://github.com/veritazz/Arduboy2.git (branch fps_development)
