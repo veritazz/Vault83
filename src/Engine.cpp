@@ -58,7 +58,9 @@ extern "C" const uint8_t bitshift_left[] __attribute__ ((aligned (8))) = {
 static uint8_t minWallDistance = PLAYERS_MIN_WALL_DISTANCE;
 static uint16_t rayAngle;
 
+#ifndef ARRAY_SIZE
 #define ARRAY_SIZE(a)	(sizeof((a)) / sizeof((a)[0]))
+#endif
 
 #define GNOMESORT(a, s, v, _dt) \
 { \
@@ -1377,10 +1379,10 @@ void Engine::update(void)
 		/* weapon is still cooling down */
 		if (es.weaponVisibleOffset)
 			es.weaponVisibleOffset -= 4;
-			if (es.weaponVisibleOffset <= 16)
-				es.rectOffset = 16;
-			else
-				es.rectOffset = 32;
+		if (es.weaponVisibleOffset <= 16)
+			es.rectOffset = 16;
+		else
+			es.rectOffset = 32;
 		weaponCoolDown -= 1;
 	} else if (pressed(B_BUTTON)) {
 		/*
@@ -2861,7 +2863,7 @@ void Engine::stopAudioEffect(uint8_t id)
 	ae->trigger = AUDIO_EFFECT_TRIGGER_STOP;
 }
 
-void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInfo *re)
+void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderInfo *re)
 {
 	re->ystart = 0;
 	re->yend = SCREEN_HEIGHT;
@@ -2900,10 +2902,6 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 
 			/* the sprite is really visible */
 			hw_s->visible += 1;
-			/*
-			 * check if the sprite column should be drawn at all
-			 */
-			int8_t tScreenY = hw_s->screenY;
 
 			/******************************************************
 			 *
@@ -2974,7 +2972,7 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 	}
 }
 
-void Engine::updateSprites(int16_t screenYStart, int16_t fovLeft, uint16_t maxRayLength)
+void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxRayLength)
 {
 	/* rightmost angle of the players current field of view */
 	int16_t fovRight = fovLeft + FIELD_OF_VIEW;
@@ -3407,9 +3405,9 @@ void Engine::render(void)
 	int16_t screenYStart = (int16_t)((es.vHeadPosition >> 4) + vMove);
 
 	/* leftmost angle of the players current field of view */
-	int16_t playerFOVLeftAngle = es.ld.playerAngle - FIELD_OF_VIEW / 2;
-	if (playerFOVLeftAngle < 0)
-		playerFOVLeftAngle += 360;
+	uint16_t playerFOVLeftAngle = 360 + es.ld.playerAngle - FIELD_OF_VIEW / 2;
+	if (playerFOVLeftAngle >= 360)
+		playerFOVLeftAngle -= 360;
 
 	/* move the player, list of blocks to ignore must be clean before this call */
 	move(es.ld.playerAngle, es.direction, &es.ld.playerX, &es.ld.playerY, PLAYERS_SPEED);
