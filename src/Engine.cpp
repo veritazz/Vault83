@@ -2861,8 +2861,6 @@ void Engine::stopAudioEffect(uint8_t id)
 	ae->trigger = AUDIO_EFFECT_TRIGGER_STOP;
 }
 
-static uint8_t ray_mask[64 / 8];
-
 void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInfo *re)
 {
 	re->ystart = 0;
@@ -2907,8 +2905,6 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 			 */
 			int8_t tScreenY = hw_s->screenY;
 
-			ray_mask[ray / 8] |= 1 << (ray % 8);
-
 			/******************************************************
 			 *
 			 * draw texture onto the sprite
@@ -2951,11 +2947,6 @@ void Engine::handleSprites(uint16_t rayLength, int16_t fovLeft, struct renderInf
 			} else {
 				drawAll(hw_s->screenY, scale, dh, re);
 			}
-
-if (re->yfirst < re->ystart)
-	re->ystart = re->yfirst;
-if (re->ylast > re->yend)
-	re->yend = re->ylast;
 
 			/* deselect cart */
 			Cart::readEnd();
@@ -4157,10 +4148,6 @@ horizontal_intersection_done2:
 			es.screenColumn[7] = Cart::readEnd();
 		}
 
-		/* handle sprites for this ray */
-		handleSprites(rayLength, playerFOVLeftAngle, re);
-
-
 		if (tile == V_M_W) {
 			struct movingWall *cmw = (struct movingWall *)ptrValue;
 			/*
@@ -4250,77 +4237,77 @@ horizontal_intersection_done2:
 		if (ray == 32)
 			memset(es.texColumn, 0xff, 4);
 #endif
-		/* handle walls for this ray */
-		if ((ray_mask[ray / 8] & (1 << (ray % 8))) == 0) {
 
-			/* skip wallHeight, scale and px_base */
+		/* skip wallHeight, scale and px_base */
 #ifdef CONFIG_LOD
-			Cart::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
+		Cart::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
 #else
-			Cart::seekData(rayLengths_flashoffset + rayLength * 9);
-			uint16_t wallHeight = Cart::readPendingUInt8();
-			wallHeight |= Cart::readPendingUInt8() << 8;
-			uint16_t scale = Cart::readPendingUInt8();
-			scale |= Cart::readPendingUInt8() << 8;
-			/* TODO this is only required for scale up */
-			uint8_t px_base = Cart::readPendingUInt8();
+		Cart::seekData(rayLengths_flashoffset + rayLength * 9);
+		uint16_t wallHeight = Cart::readPendingUInt8();
+		wallHeight |= Cart::readPendingUInt8() << 8;
+		uint16_t scale = Cart::readPendingUInt8();
+		scale |= Cart::readPendingUInt8() << 8;
+		/* TODO this is only required for scale up */
+		uint8_t px_base = Cart::readPendingUInt8();
 #endif
-			/**************************************************************
-			 *
-			 * draw texture onto the wall
-			 *
-			 * find x coordinate of the texture
-			 *   + textures are always 32x32 pixels in size
-			 */
-			int16_t screenY;
+		/**************************************************************
+		 *
+		 * draw texture onto the wall
+		 *
+		 * find x coordinate of the texture
+		 *   + textures are always 32x32 pixels in size
+		 */
+		int16_t screenY;
 
-			screenY = (SCREEN_HEIGHT - (int16_t)wallHeight) / 2 + screenYStart;
+		screenY = (SCREEN_HEIGHT - (int16_t)wallHeight) / 2 + screenYStart;
 
-			/**************************************************************
-			 *
-			 * draw vertical slice of the texture
-			 *
-			 * handle horizontal doors
-			 *
-			 *
-			 * IDEA remember rendered columns per tile/texX/texX -> wallHeight
-			 * per tile - > wallHeight -> (texX, texY)
-			 *
-			 *
-			 * just the regular wall textures
-			 */
-			/*
-			 * only draw textures when wall is close enough
-			 * as details are anyway not visible at this resolution
-			 */
-			if (wallHeight >= MIN_WALL_HEIGHT) {
-				// TODO the scale up algorithm is really only fast if min scale up is x2
+		/**************************************************************
+		 *
+		 * draw vertical slice of the texture
+		 *
+		 * handle horizontal doors
+		 *
+		 *
+		 * IDEA remember rendered columns per tile/texX/texX -> wallHeight
+		 * per tile - > wallHeight -> (texX, texY)
+		 *
+		 *
+		 * just the regular wall textures
+		 */
+		/*
+		 * only draw textures when wall is close enough
+		 * as details are anyway not visible at this resolution
+		 */
+		if (wallHeight >= MIN_WALL_HEIGHT) {
+			// TODO the scale up algorithm is really only fast if min scale up is x2
 
-				/* clip wallHeight to the maximum of the screen height */
-				if (wallHeight > SCREEN_HEIGHT) {
-					if (screenY < 0) {
-						wallHeight += screenY;
-						if (wallHeight > SCREEN_HEIGHT)
-							wallHeight = SCREEN_HEIGHT;
-					} else {
-						if (screenY < SCREEN_HEIGHT)
-							wallHeight = SCREEN_HEIGHT - screenY;
-						else
-							wallHeight = 0;
-					}
+			/* clip wallHeight to the maximum of the screen height */
+			if (wallHeight > SCREEN_HEIGHT) {
+				if (screenY < 0) {
+					wallHeight += screenY;
+					if (wallHeight > SCREEN_HEIGHT)
+						wallHeight = SCREEN_HEIGHT;
+				} else {
+					if (screenY < SCREEN_HEIGHT)
+						wallHeight = SCREEN_HEIGHT - screenY;
+					else
+						wallHeight = 0;
 				}
-
-				if (scale < TEXTURE_SCALE_UP_LIMIT)
-					drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
-				else
-					drawAll(screenY, scale, wallHeight, re);
-			} else {
-
-				drawNoTexture(screenY, wallHeight, re);
 			}
-			/* deselect cart */
-			Cart::readEnd();
+
+			if (scale < TEXTURE_SCALE_UP_LIMIT)
+				drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
+			else
+				drawAll(screenY, scale, wallHeight, re);
+		} else {
+
+			drawNoTexture(screenY, wallHeight, re);
 		}
+		/* deselect cart */
+		Cart::readEnd();
+
+		/* handle sprites for this ray */
+		handleSprites(rayLength, playerFOVLeftAngle, re);
 
 		/* copy current screen column into next column */
 		unsigned char *buffer = arduboy->getBuffer() + (ray * 2 * HEIGHT_BYTES);
@@ -4351,8 +4338,6 @@ horizontal_intersection_done2:
 	drawing_start = millis();
 	render_draw = drawing_start - render_draw_start;
 #endif
-
-	memset(ray_mask, 0, sizeof(ray_mask));
 
 	/***************************************************************
 	 *
