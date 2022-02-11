@@ -3,7 +3,7 @@
 
 #include <avr/io.h>
 
-#ifdef CONFIG_FX_DEMO_PLATFORM /* old ArduboyFX demo platform */
+#ifdef CART_CS_RX /* old ArduboyFX demo platform */
 #define CART_PORT    PORTD
 #define CART_BIT     PORTD2
 #else
