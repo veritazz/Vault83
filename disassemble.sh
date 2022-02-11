@@ -1,4 +1,4 @@
 #!/bin/bash
 
-avr-objdump -sD .pio/build/leonardo/firmware.elf > firmware.S
+avr-objdump -sD .pio/build/FXDemoPlatform/firmware.elf > firmware.S
 
