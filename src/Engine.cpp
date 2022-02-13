@@ -3338,21 +3338,13 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 * if the displayheight plus the screen y offset exceeds the
 		 * screenheight then we need to clip it
 		 */
-		if ((hw_s->spriteDisplayHeight + hw_s->screenY) > SCREEN_HEIGHT)
-			hw_s->spriteDisplayHeight = SCREEN_HEIGHT - hw_s->screenY;
-
-		/* clip wallHeight to the maximum of the screen height */
-		if (hw_s->spriteDisplayHeight > SCREEN_HEIGHT) {
-			if (hw_s->screenY < 0) {
-				hw_s->spriteDisplayHeight += hw_s->screenY;
-				if (hw_s->spriteDisplayHeight > SCREEN_HEIGHT)
-					hw_s->spriteDisplayHeight = SCREEN_HEIGHT;
-			} else {
-				if (hw_s->screenY < SCREEN_HEIGHT)
-					hw_s->spriteDisplayHeight = SCREEN_HEIGHT - hw_s->screenY;
-				else
-					hw_s->spriteDisplayHeight = 0;
-			}
+		int16_t screenY = hw_s->screenY;
+		if (screenY < 0) {
+			hw_s->spriteDisplayHeight += screenY;
+			screenY = 0;
+		}
+		if ((hw_s->spriteDisplayHeight + screenY) > SCREEN_HEIGHT) {
+			hw_s->spriteDisplayHeight = SCREEN_HEIGHT - screenY;
 		}
 
 		/* deselect cart */
