@@ -2857,6 +2857,9 @@ void Engine::stopAudioEffect(uint8_t id)
 	ae->trigger = AUDIO_EFFECT_TRIGGER_STOP;
 }
 
+/*
+ * drawing loop for visible sprites
+ */
 void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderInfo *re)
 {
 	re->ystart = 0;
