@@ -2878,16 +2878,8 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
 
-		int16_t diffAngle;
-
-		if (rayAngle < fovLeft)
-			diffAngle = rayAngle + 360 - hw_s->spriteAngle;
-		else
-			diffAngle = rayAngle - hw_s->spriteAngle;
-
-		if (diffAngle >= 360)
-			diffAngle -= 360;
-		else if (diffAngle < 0)
+		int16_t diffAngle = rayAngle - hw_s->spriteAngle;
+		if (diffAngle < 0)
 			diffAngle += 360;
 
 		/* TODO diffAngle > 90, improve this */
