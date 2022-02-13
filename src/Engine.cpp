@@ -1628,10 +1628,7 @@ uint16_t Engine::arc_s8(int8_t value, const int8_t *table, uint16_t tsize)
 			index = tsize - 1;
 			break;
 		}
-		if (index < 0) {
-			index = 0;
-			break;
-		}
+
 		tmp = pgm_read_int8(&table[index]);
 		if (tmp < value) {
 			previous_index = index;
@@ -1675,10 +1672,7 @@ uint16_t Engine::arc_u16(uint16_t value, const uint16_t *table, uint8_t tsize)
 			index = tsize - 1;
 			break;
 		}
-		if (index < 0) {
-			index = 0;
-			break;
-		}
+
 		tmp = pgm_read_uint16(&table[index]);
 		if (tmp < value) {
 			previous_index = index;
