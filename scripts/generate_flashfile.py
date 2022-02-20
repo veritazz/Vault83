@@ -69,7 +69,7 @@ if __name__ == "__main__":
 	# open input file (list of files, <binfile>, <txtfile>, <pack>
 	with open(inputFileName, 'r') as inputFile, open(outputBinFileName, 'wb') as outputBinFile, open(outputHFileName, 'w') as outputHFile:
 		outputHFile.write("#ifndef __FLASHOFFSETS_H\n#define __FLASHOFFSETS_H\n\n")
-		outputHFile.write("#include \"cart.h\"\n\n")
+		outputHFile.write("#include \"ArduboyFX.h\"\n\n")
 
 		while True:
 			#readline ifile
