@@ -120,6 +120,7 @@
 #define SPRITE_HEIGHT          16
 #define SPRITE_HEIGHT_BYTES    ((SPRITE_HEIGHT + 7) / 8)
 #define SPRITE_SIZE            (SPRITE_HEIGHT_BYTES * SPRITE_WIDTH)
+#define SPRITE_MAX_VDISTANCE   (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)  /* maximum distance a sprite is still visible */
 
 
 /*----------------------------------------------------------

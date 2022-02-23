@@ -2961,6 +2961,10 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 	}
 }
 
+extern "C" const uint16_t xlateQuadrantToAngle[] __attribute__ ((aligned (8))) = {
+  90, 90, 270, 270,
+};
+
 void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxRayLength)
 {
 	/* rightmost angle of the players current field of view */
@@ -3089,6 +3093,11 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		}
 
 		/* calculate new distance */
+		/* TODO do this only if the sprite is inside a bounding box
+		 *      around the player
+		 *      - bounding box around a circle with radius
+		 *        (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6) = max visible distance
+		 */
 
 		uint16_t dX, dY;
 		int16_t spriteAngle;
@@ -3097,54 +3106,43 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		/*
 		 * calculate in which quadrant the sprite is in, relative to the
 		 * player
+		 *
+		 * dY negative:     3  (Q4)
+		 * both negative:   4  (Q3)
+		 * dX negative:     2  (Q2)
+		 * both positive:   1  (Q1)
 		 */
 		if (es.ld.playerX < s->x) {
+			/* dX would be positive */
 			dX = s->x - es.ld.playerX;
 			quadrant = 1;
 		} else {
+			/* dX would be negative */
 			dX = es.ld.playerX - s->x;
 			quadrant = 2;
 		}
 
 		if (es.ld.playerY < s->y) {
+			/* dY would be positive */
 			dY = s->y - es.ld.playerY;
-			quadrant += 4;
+			quadrant += 0;
 		} else {
+			/* dY would be negative */
 			dY = es.ld.playerY - s->y;
-			quadrant += 8;
+			quadrant += 2;
 		}
 
-		/*
-		 * both negative:   5  (Q1)
-		 * just x negative: 9  (Q4)
-		 * just y negative: 6  (Q2)
-		 * both positive:   10 (Q3)
-		 */
-		uint16_t tan;
-		uint16_t atan;
-		uint16_t distance;
+		uint16_t distance = 0xffff;
+		uint8_t qAngle;
+		int16_t minAngle;
 
-		/*
-		 * calculate the distance to the player
-		 */
-		if (dY > dX) {
-			if (dX > 1)
-				tan = dY * BYX / dX;
-			else
-				tan = dY * BYX;
-			atan = 90 - arc_u16(tan, tanByX, ARRAY_SIZE(tanByX));
-			/* TODO use multiplication like for wall textures */
-			distance = (uint32_t)dY * COSBYX / pgm_cosByX(atan);
-		} else {
-			if (dY > 1)
-				tan = dX * BYX / dY;
-			else
-				tan = dX * BYX;
-			atan = arc_u16(tan, tanByX, ARRAY_SIZE(tanByX));
-			/* TODO use multiplication like for wall textures */
-			distance = (uint32_t)dX * COSBYX / pgm_cosByX(90 - atan);
+		if (dX < SPRITE_MAX_VDISTANCE && dY < SPRITE_MAX_VDISTANCE) {
+			FX::seekData(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
+			distance = FX::readPendingUInt8();
+			distance |= FX::readPendingUInt8() << 8;
+			minAngle = FX::readPendingUInt8();
+			qAngle = FX::readEnd();
 		}
-
 
 		s->distance = distance; /* required to collect items even when not in line of sight */
 
@@ -3157,30 +3155,17 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 *  textures the min size will be lower than 4 pixels but we
 		 *  gain some progmem by this simplyfication.
 		 *
-		 *  if sprite is futher away than maxRayLength then it is considered as
+		 *  if sprite is farther away than maxRayLength then it is considered as
 		 *  non visible
 		 */
-		if ((distance > maxRayLength) || (distance > (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)) || (distance == 0))
+		if ((distance > maxRayLength) || (distance == 0))
 			continue;
 
-		if (quadrant == 5) {
-			/* Q1 */
-			spriteAngle = 90 - atan;
-		} else if (quadrant == 6) {
-			/* Q2 */
-			spriteAngle = 90 + atan;
-		} else if (quadrant == 9) {
-			/* Q4 */
-			spriteAngle = 270 + atan;
-		} else {
-			/* Q3 */
-			spriteAngle = 270 - atan;
-		}
-
-		int16_t minAngle = arc_s8(SPRITE_WIDTH * COSBYX / 2 / distance, cosByX, ARRAY_SIZE(cosByX));
-		/* TODO totally forgot why that is (minAngle % 90) */
-		while (minAngle >= 90)
-			minAngle -= 90;
+		spriteAngle = xlateQuadrantToAngle[quadrant - 1];
+		if (quadrant == 1 || quadrant == 4)
+			spriteAngle -= qAngle;
+		else
+			spriteAngle += qAngle;
 
 		/*
 		 * extend left border of field of view by the

@@ -154,6 +154,7 @@ if __name__ == "__main__":
 		cfile.write("\n};\n")
 		print("done")
 
+		print("generating raylengths table...", end=' ')
 		newPatterns = OrderedDict()
 		f = 0.0
 		maxD = 0
@@ -236,7 +237,36 @@ if __name__ == "__main__":
 
 				bfile.write(struct.pack('<I', pattern))
 				#print("%f %4u %3u %s fv %2u lv %2u d %d" % (whf, scale, px_base, key, newPatterns[whf][4], newPatterns[whf][5], newPatterns[whf][6]))
+		print("done")
 
+		print("generating distance table...", end=' ')
+		with open("distances.bin", 'wb') as bfile:
+			for dx in range(272):
+				for dy in range (272):
+					# distance to the sprite
+					distance = int(round(math.sqrt((dx*dx) + (dy*dy))))
+					# minimum angle left and right of the field of view the sprite is possibly
+					# visible. This will later be used by the engine to determine if any part
+					# of the sprite is in the field of view
+					minAngle = 0
+					if distance >= 8:
+						minAngle = int(round(math.degrees(math.acos(16.0 / 2 / distance))))
+					minAngle %= 90
+
+					if dy > dx:
+						tan = dy
+						if dx > 1:
+							tan /= dx
+						qAngle = 90 - int(round(math.degrees(math.atan(tan))))
+					else:
+						tan = dx
+						if dy > 1:
+							tan /= dy
+						qAngle = int(round(math.degrees(math.atan(tan))))
+					# qAngle: angle in the current quadrant. It is later used to calculate the
+					#         full angle of the sprite
+					bfile.write(struct.pack('<HBB', distance, minAngle, qAngle))
+		print("done")
 
 		hfile.write("\n");
 		hfile.write("\n");

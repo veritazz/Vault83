@@ -92,3 +92,4 @@ level2_specialWalls.bin,, pad 128
 # some tables
 #
 rayLengths.bin,,pad
+distances.bin,,pad

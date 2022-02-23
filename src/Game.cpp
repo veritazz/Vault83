@@ -56,7 +56,7 @@ void setup(void)
 	Serial.begin(9600);
 #endif
 	FX::disableOLED();
-	FX::begin(0xFF74);
+	FX::begin(0xFAF0);
 
 #ifdef AUDIO
 	/* enable Audio */
