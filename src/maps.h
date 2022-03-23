@@ -65,7 +65,9 @@
 #define S_TYPE1              0x81
 #define S_TYPE_LAST          S_TYPE1
 #define S_TYPE_MAX_NR        (S_TYPE_LAST - S_TYPE_FIRST)
-
+/*
+ * enemies
+ */
 #define ENEMIES_START        0x82
 #define E_TYPE_FIRST         0x82
 #define E_TYPE0              E_TYPE_FIRST
@@ -112,7 +114,7 @@
 #define IS_SIMPLE(v)           (((v) & F_MASK) == S_SIMPLE)
 #define IS_PROJECTILE(v)       (((v) & F_MASK) == S_PROJECTILE)
 
-#define S_INACTIVE             (1 << 2)
+#define S_INACTIVE             (1 << 0)
 #define IS_INACTIVE(v)         ((v) & S_INACTIVE)
 
 /* sprite dimensions in pixel */

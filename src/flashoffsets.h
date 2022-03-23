@@ -2496,19 +2496,20 @@ constexpr uint24_t levelData_flashoffset                    = 0x004800;
  *   triggers                                    : 4
  *   doors                                       : 3
  *   moving walls                                : 4
- *   sprites                                     : 18
+ *   sprites                                     : 17
+ *   static sprites                              : 12
  *   quests                                      : 1
- *   special walls                              : 1
+ *   special walls                              : 4
  * ----------------------------------------------------
  *   memory used for map                  (bytes): 4096
  *   memory used for triggers             (bytes): 20
  *   memory used for moving walls         (bytes): 24
  *   memory used for doors                (bytes): 9
- *   memory used for sprites              (bytes): 306
+ *   memory used for sprites              (bytes): 68
  *   memory used for quests               (bytes): 18
- *   memory used for special walls       (bytes): 4
+ *   memory used for special walls       (bytes): 13
  * ----------------------------------------------------
- *   sum                                  (bytes): 4477
+ *   sum                                  (bytes): 4248
  * ====================================================
  */
 constexpr uint24_t level1_flashoffset                       = 0x004800;
@@ -2519,7 +2520,8 @@ constexpr uint24_t level1_flashoffset                       = 0x004800;
  *   triggers                                    : 2
  *   doors                                       : 2
  *   moving walls                                : 3
- *   sprites                                     : 5
+ *   sprites                                     : 3
+ *   static sprites                              : 2
  *   quests                                      : 0
  *   special walls                              : 0
  * ----------------------------------------------------
@@ -2527,11 +2529,11 @@ constexpr uint24_t level1_flashoffset                       = 0x004800;
  *   memory used for triggers             (bytes): 10
  *   memory used for moving walls         (bytes): 18
  *   memory used for doors                (bytes): 6
- *   memory used for sprites              (bytes): 85
+ *   memory used for sprites              (bytes): 12
  *   memory used for quests               (bytes): 0
  *   memory used for special walls       (bytes): 1
  * ----------------------------------------------------
- *   sum                                  (bytes): 4216
+ *   sum                                  (bytes): 4143
  * ====================================================
  */
 constexpr uint24_t level2_flashoffset                       = 0x006000;

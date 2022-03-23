@@ -6,6 +6,7 @@
 #include "leveldata.h"
 #include "ArduboyFX.h"
 
+#define NEW_SPRITES
 #include "EngineData.h"
 
 #define AUDIO
@@ -274,7 +275,7 @@ private:
 	void checkIntersect(struct intersect *i); // __attribute__ ((always_inline));
 	uint8_t move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_t *y, uint8_t distance);
 
-	uint8_t moveSprite(struct lightweight_sprite *s, uint8_t speed);
+	uint8_t moveSprite(struct current_sprite *cs, uint8_t speed);
 	void drawNumber(uint8_t x, uint8_t y, uint8_t number);
 	void setStatusMessage(uint8_t msg_id);
 	void ultraDraw(unsigned char *buffer, uint8_t drawCase);
@@ -285,16 +286,16 @@ private:
 	void doDamageForVMW(struct movingWall *mw);
 	uint8_t movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct movingWall *mw, uint8_t flags);
 
-	void doDamageToSprite(struct lightweight_sprite *s, uint8_t damage);
-	void checkAndDoDamageToSpriteByObjects(struct lightweight_sprite *s);
+	void doDamageToSprite(uint8_t id, uint8_t damage);
+	void checkAndDoDamageToSpriteByObjects(uint8_t id);
 
 	/* enemy states */
-	uint8_t enemyStateIdle(struct lightweight_sprite *s, uint8_t speed);
-	uint8_t enemyStateAttack(struct lightweight_sprite *s, uint8_t speed);
-	uint8_t enemyStateFollow(struct lightweight_sprite *s, uint8_t speed);
-	uint8_t enemyStateRandomMove(struct lightweight_sprite *s, uint8_t speed);
+	uint8_t enemyStateIdle(struct current_sprite *cs, uint8_t speed);
+	uint8_t enemyStateAttack(struct current_sprite *cs, uint8_t speed);
+	uint8_t enemyStateFollow(struct current_sprite *cs, uint8_t speed);
+	uint8_t enemyStateRandomMove(struct current_sprite *cs, uint8_t speed);
 	/* enemy movement helpers */
-	void enemyTurnToPlayer(struct lightweight_sprite *s);
+	void enemyTurnToPlayer(struct current_sprite *cs);
 
 	/*
 	 * texture effect functions, works on the texture data
@@ -318,7 +319,6 @@ private:
 	void stopAudioEffect(uint8_t id);
 
 	/* misc helper functions */
-	uint8_t compareSpriteDistance(uint8_t index1, uint8_t index2);
 	uint8_t compareGreaterOrEqual(uint8_t index1, uint8_t index2);
 	uint8_t readThroughCache(uint8_t mapX, uint8_t mapY);
 

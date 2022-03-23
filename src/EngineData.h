@@ -31,6 +31,45 @@ struct renderInfo {
 	uint8_t dummy[4];
 };
 
+#define SPRITE_VIEWANGLE_GET(s)       ((((s)->flags) >> 1) & 0x3)
+#define SPRITE_TYPE_GET(s)            ((((s)->flags) >> 3) & 0x3)
+#define SPRITE_STATE_GET(s)           ((((s)->flags) >> 5) & 0x7)
+
+#define PROJECTILE_TYPE_GET(s)        (((s)->flags) >> 3)
+
+#define SPRITE_VIEWANGLE_SET(s, _v)   (s)->flags = ((s)->flags & ~(0x3 << 1)) | (_v << 1)
+#define SPRITE_TYPE_SET(s, _v)        (s)->flags = ((s)->flags & ~(0x3 << 3)) | (_v << 3)
+#define SPRITE_STATE_SET(s, _v)       (s)->flags = ((s)->flags & ~(0x7 << 5)) | (_v << 5)
+#define SPRITE_XY_SET(s, x, y)        ((s)->xy = (uint24_t)(x) | (uint24_t)(y) << 12)
+
+struct sprite {
+	uint24_t xy;     /* lsb 12bits for x, msb 12bits for y */
+	uint8_t flags;   /* flags for moving sprites
+			  *
+			  * bit[0]  : 0 = active, 1 = inactive
+			  * bit[2:1]: viewAngle, 0 = 0, 1 = 90, 2 = 180, 3 = 270
+			  * bit[4:3]: type
+			  * bit[7:5]: state
+			  */
+			 /* flags for projectiles
+			  *
+			  * bit[0]  : 0 = active, 1 = inactive
+			  * bit[2:1]: viewAngle, 0 = 0, 1 = 90, 2 = 180, 3 = 270
+			  * bit[7:3]: type
+			  */
+} /* = 4 bytes */;
+
+struct current_sprite {
+	uint8_t id;
+	uint16_t x;
+	uint16_t y;
+	uint16_t distance;
+	uint16_t spriteAngle;
+	int16_t viewAngle;
+	uint8_t flags;
+};
+
+#if 0
 struct lightweight_sprite {
 	uint16_t x;                  // 2  x position on the map
 	uint16_t y;                  // 2  y position on the map
@@ -43,19 +82,20 @@ struct lightweight_sprite {
 	uint8_t state;               // 1  state of the sprite
 	uint8_t hwid;                // 1  index into the heavyweight sprite list
 }; /* = 14 bytes */
+#endif
 
 /*
  * data structure for sprites that are actually drawn on the screen
  */
 struct heavyweight_sprite {
 	uint24_t p;                  // 3  flash pointer to the sprite graphics
-	int16_t screenY;             // 2  screen y coordinate of the sprite (where drawing will start)
-	int16_t spriteDisplayHeight; // 2  sprite height in pixel that will be drawn
-	uint16_t spriteAngle;        // 2  angle the player is looking at the sprite
-	uint8_t visible;             // 1  if potentially visible, >1 if really visible, 0 otherwise
+	int16_t screenY;             // TODO take from flash 2  screen y coordinate of the sprite (where drawing will start)
+	int16_t spriteDisplayHeight; // TODO take from flash 2  sprite height in pixel that will be drawn
+	uint16_t spriteAngle;        // TODO take from flash (atan) 2  angle the player is looking at the sprite
 	uint8_t vSide;               // 1  the side the player is looking at, 0 = front, 1 = right, 2 = back, 3 = left
-	uint8_t dummy[3];
-}; /* = 14 bytes */
+	uint8_t id;
+	uint16_t distance;
+}; /* = 11 bytes */
 
 /* size = 6 bytes */
 struct door {
@@ -118,7 +158,14 @@ struct level_initdata {
 	struct trigger triggers[MAX_TRIGGERS]; /* list of triggers on the map */
 	struct movingWall movingWalls[MAX_MOVING_WALLS]; /* list of moving walls on the map */
 	struct door doors[MAX_DOORS]; /* list of doors on the map */
+#ifdef NEW_SPRITES
+	struct sprite lw_sprites[TOTAL_SPRITES];
+	uint8_t static_sprite_flags[MAX_SPRITES];
+#else
 	struct lightweight_sprite lw_sprites[MAX_SPRITES];
+#endif
+	uint8_t nr_of_sprites;              /* number of non static sprites */
+
 	uint16_t playerX;                   /* players x coordinate in pixel */
 	uint16_t playerY;                   /* players y coordinate in pixel */
 	uint8_t playerMapX;                 /* players current map x position */
@@ -139,6 +186,9 @@ struct statusMessage {
 
 
 struct engineState {
+	uint8_t screenColumn[8] __attribute__ ((aligned (8))); /* buffer for one rendered screen column */
+	uint8_t texColumn[8] __attribute__ ((aligned (8)));
+
 	uint8_t movementSpeedDuration;      /* timeout in frames until movement stops */
 	uint8_t playerActiveWeapon;         /* active weapon of the player */
 	int8_t playerHealth;                /* current health of the player */
@@ -175,11 +225,6 @@ struct engineState {
 	 * sprite handling
 	 */
 	struct heavyweight_sprite hw_sprites[MAX_VISIBLE_SPRITES];
-	/*
-	 * list of visible sprites, sorted in descending order regarding their distance
-	 * to the player
-	 */
-	uint8_t visibleSpriteList[MAX_SPRITES]; /* list of ids of visible sprites */
 	uint8_t nrOfVisibleSprites; /* number of sprites visible by the player */
 	/*
 	 * trigger handling
@@ -219,13 +264,11 @@ struct engineState {
 	 * screen rendering
 	 */
 	uint8_t textureRotateLeftOffset; /* current offset to rotate textures to the left (texture data manipulation) */
-	uint8_t screenColumn[8] __attribute__ ((aligned (8))); /* buffer for one rendered screen column */
 	int8_t itemDance; /* current offset for item movement */
 	int8_t itemDanceDir; /* current direction for item movement (-1 = up, 1 = down) */
 	/*
 	 * lower 4 bytes = mask, upper 4 bytes = texture
 	 */
-	uint8_t texColumn[8] __attribute__ ((aligned (8)));
 
 	/*
 	 * System events
