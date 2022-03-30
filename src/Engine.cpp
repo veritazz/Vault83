@@ -2164,9 +2164,7 @@ uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
 	/* ~4ms */
 	uint8_t tile = checkIgnoreBlock(mapX, mapY);
 #endif
-	if (tile >= SPRITES_START) {
-		tile = F0;
-	} else if (tile == H_DOOR) {
+	if (tile == H_DOOR) {
 		/*
 		 * check if we can just ignore that door
 		 */
@@ -2771,6 +2769,16 @@ uint8_t Engine::readThroughCache(uint8_t mapX, uint8_t mapY)
 	}
 	/* read map tile */
 	uint8_t tile = checkIgnoreBlock(mapX, mapY);
+
+	/*
+	 * if tile is a static sprite then put an empty tile in the cache but remember
+	 * the static sprite for the render stage
+	 */
+	if (tile >= SPRITES_START) {
+		// TODO extract sprite id from tile, check static sprite array if is tile still active
+		// TODO store x/y ???
+		tile = F0;
+	}
 
 	/* store in cache */
 	cEntry->mapX = mapX;
