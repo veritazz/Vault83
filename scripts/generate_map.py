@@ -834,7 +834,9 @@ if __name__ == "__main__":
 				for pad in range(maxDoorCount - doorCount):
 					bfile.write('\0'.encode('utf-8') * 6)
 
-				# write sprites init data
+				#################################################################
+				# write dynamic sprites init data
+				#
 				for spr in list(mapSprites.keys()):
 					s = mapSprites[spr]
 					mapX = s["map-x"]
@@ -860,7 +862,7 @@ if __name__ == "__main__":
 					bfile.write(struct.pack('<B', 1))  # flags: inactive
 
 				#################################################################
-				# write static sprites health table
+				# write dynamic sprites health table
 				#
 				for spr in list(mapSprites.keys()):
 					s = mapSprites[spr]
