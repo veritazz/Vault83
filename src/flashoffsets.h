@@ -2541,7 +2541,7 @@ constexpr uint16_t specialWallsDataAlignment                = 0x0080;
 constexpr uint24_t specialWallsData_flashoffset             = 0x007800;
 constexpr uint24_t level1_specialWalls_flashoffset          = 0x007800;
 constexpr uint24_t level2_specialWalls_flashoffset          = 0x007880;
-constexpr uint24_t rayLengths_flashoffset                   = 0x007900;
-constexpr uint24_t distances_flashoffset                    = 0x008c00;
+constexpr uint24_t rayLengths_flashoffset                   = 0x007880;
+constexpr uint24_t distances_flashoffset                    = 0x008b80;
 
 #endif

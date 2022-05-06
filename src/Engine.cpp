@@ -645,7 +645,6 @@ void Engine::drawNumber(uint8_t x, uint8_t y, uint8_t number)
 
 void Engine::enemyTurnToPlayer(struct current_sprite *cs)
 {
-	// TODO this is wrong when the player is not facing the sprite
 	cs->viewAngle = cs->spriteAngle - 180;
 	if (cs->viewAngle < 0)
 		cs->viewAngle += 360;
@@ -753,9 +752,7 @@ uint8_t Engine::enemyStateFollow(struct current_sprite *cs, uint8_t speed)
 	} else if (cs->distance > 384) {
 		state = ENEMY_RANDOM_MOVE;
 	} else {
-		/* focus every 64 frames */
-		if ((es.frame % 64) == 0)
-			enemyTurnToPlayer(cs);
+		enemyTurnToPlayer(cs);
 
 		moveSprite(cs, speed);
 
@@ -1063,9 +1060,7 @@ void Engine::updateSpecialWalls(void)
 
 	if (shootingWallCoolDown == 0) {
 		FX::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
-		uint8_t maxSpecialWalls = FX::readPendingUInt8();
-
-		for (uint8_t p = es.ld.nr_of_sprites; p < (es.ld.nr_of_sprites + maxSpecialWalls); p++) {
+		for (uint8_t p = es.ld.nr_of_sprites; p < (es.ld.nr_of_sprites + es.ld.maxSpecialWalls); p++) {
 			struct sprite *s = &es.ld.lw_sprites[p];
 			if (!IS_INACTIVE(s->flags)) {
 				/* TODO what a waste, maybe seek? */
@@ -2775,8 +2770,17 @@ uint8_t Engine::readThroughCache(uint8_t mapX, uint8_t mapY)
 	 * the static sprite for the render stage
 	 */
 	if (tile >= SPRITES_START) {
-		// TODO extract sprite id from tile, check static sprite array if is tile still active
-		// TODO store x/y ???
+		uint8_t sprite_id = tile & ~SPRITES_START;
+		/*
+		 * if there is space and the sprite is still active then
+		 * add it to the heavyweight sprite lists
+		 */
+		if (es.nrOfVisibleSprites < MAX_VISIBLE_SPRITES && (es.ld.static_sprites[sprite_id] & 1)) {
+			struct heavyweight_sprite *hw_s = &es.hw_sprites[es.nrOfVisibleSprites];
+			hw_s->id = tile;
+			HWSPRITE_XY_SET(hw_s, mapX * BLOCK_SIZE + 32, mapY * BLOCK_SIZE + 32);
+			es.nrOfVisibleSprites++;
+		}
 		tile = F0;
 	}
 
@@ -2896,9 +2900,17 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 	re->yfirst = SCREEN_HEIGHT;
 	re->ylast = SCREEN_HEIGHT;
 
+	struct sprite _s;
+
 	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
-		struct sprite *s = &es.ld.lw_sprites[hw_s->id];
+		struct sprite *s;
+		if (hw_s->id < SPRITES_START) {
+			s = &es.ld.lw_sprites[hw_s->id];
+		} else {
+			s = &_s;
+			_s.flags = es.ld.static_sprites[hw_s->id - 0x80];
+		}
 		/*
 		 * this ray might not reach the sprite
 		 */
@@ -2967,14 +2979,13 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 			 * shooting will happen in the middle of the screen (64 rays / 2 = 32)
 			 *   items and projectiles will be ignored
 			 */
-			if (es.fireCountdown == 0 && hw_s->id < es.ld.nr_of_sprites) {
+			if (es.fireCountdown == 0 && !SPRITE_IS_PROJECTILE(s)) {
 				/* TODO weapon effective distance */
 
 				/* if player shoots, enemy will attack */
 				SPRITE_STATE_SET(s, ENEMY_ATTACK);
 
 				/* TODO, maybe just draw some splatter, set frame for hit animation */
-				//s->vSide = <hit side>;
 
 				/* do damage based on current weapon */
 				uint8_t damage = pgm_read_uint8(&weaponDamage[es.playerActiveWeapon]);
@@ -2998,21 +3009,151 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 	if (fovRight >= 360)
 		fovRight -= 360;
 
-	/**********************************************************************
-	 *
-	 * update each sprite (position, state)
-	 * check all sprites if they are in the field of view of the player
-	 *
-	 * calculate the distance and the angle of the sprite to the player
-	 *
+	struct heavyweight_sprite *hw_s = &es.hw_sprites[0];
+	uint8_t invisibleSprites = 0;
+	/*
+	 * Loop through the actual visible sprites and calculate distance and other
+	 * parameters. The sprites that are now in the list are static sprites that
+	 * have been found during the raycasting.
 	 */
-	es.nrOfVisibleSprites = 0;
+	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
+		uint16_t x, y;
+
+		/*
+		 * get sprite x/y position from p
+		 * (was stored there during the raycast)
+		 */
+		x = hw_s->p & 0xfff;
+		y = hw_s->p >> 12;
+
+		uint16_t dX, dY;
+		int16_t spriteAngle;
+		uint8_t quadrant;
+
+		if (es.ld.playerX < x) {
+			/* dX would be positive */
+			dX = x - es.ld.playerX;
+			quadrant = 1;
+		} else {
+			/* dX would be negative */
+			dX = es.ld.playerX - x;
+			quadrant = 2;
+		}
+
+		if (es.ld.playerY < y) {
+			/* dY would be positive */
+			dY = y - es.ld.playerY;
+			quadrant += 0;
+		} else {
+			/* dY would be negative */
+			dY = es.ld.playerY - y;
+			quadrant += 2;
+		}
+
+		uint16_t distance = 0xffff;
+		uint8_t qAngle;
+		int16_t minAngle;
+
+		if (dX < SPRITE_MAX_VDISTANCE && dY < SPRITE_MAX_VDISTANCE) {
+			FX::seekData(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
+			distance = FX::readPendingUInt8();
+			distance |= FX::readPendingUInt8() << 8;
+			minAngle = FX::readPendingUInt8();
+			qAngle = FX::readEnd();
+		}
+
+		spriteAngle = xlateQuadrantToAngle[quadrant - 1];
+		if (quadrant == 1 || quadrant == 4)
+			spriteAngle -= qAngle;
+		else
+			spriteAngle += qAngle;
+
+// TODO move down
+		hw_s->distance = distance;
+		hw_s->spriteAngle = spriteAngle;
+
+		uint8_t sprite_id = hw_s->id & ~0x80;
+		uint8_t flags = es.ld.static_sprites[sprite_id];
+		uint8_t type = (flags >> 1) & 0xf;
+
+		if (distance < 16) { //itemCollectableDistance:
+			/*
+			 * for items make the screen blink
+			 */
+			if (type >= V_OF_S(I_TYPE0)) {
+				es.blinkScreen = 1;
+				setStatusMessage(type - V_OF_S(STATUS_MSG_OFFSET));
+				/*
+				 * remove from sprite list, not very clever as
+				 * we always need to loop over all the sprites
+				 */
+				flags &= ~1;
+			}
+
+			uint8_t playerWeapons = es.playerWeapons;
+
+			if (type == V_OF_S(I_TYPE4)) {
+				/* increase health */
+				es.playerHealth += 12;
+				if (es.playerHealth > 100)
+					es.playerHealth = 100;
+			} else if (type == V_OF_S(I_TYPE5)) {
+				/*  add ammo */
+				/* start at 1 because weapon 0 is always set */
+				for (uint8_t w = 1; w < NR_OF_WEAPONS; w++) {
+					uint8_t ammo = es.playerAmmo[w];
+					if (playerWeapons | bitshift_left[w])
+						ammo += 11 - ((w - 1) * 5);
+
+					if (ammo > 99)
+						ammo = 99;
+
+					es.playerAmmo[w] = ammo;
+				}
+			} else if (type == V_OF_S(I_TYPE0)) {
+				/* increase number of keys */
+				es.playerKeys++;
+			} else if (type == V_OF_S(I_TYPE1)) {
+				/* add weapon */
+				playerWeapons |= HAS_WEAPON_2;
+			} else if (type == V_OF_S(I_TYPE2)) {
+				/* add weapon */
+				playerWeapons |= HAS_WEAPON_3;
+			} else if (type == V_OF_S(I_TYPE3)) {
+				/* add weapon */
+				playerWeapons |= HAS_WEAPON_4;
+			}
+			es.playerWeapons = playerWeapons;
+		}
+
+		if ((distance > maxRayLength) || (distance == 0)) {
+			/*
+			 * remove the sprite from hw_s list as it is too
+			 * far away to be displayed
+			 */
+			invisibleSprites++;
+			memcpy(hw_s, hw_s + 1, sizeof(hw_s) * (es.nrOfVisibleSprites - i));
+			continue;
+		}
+
+
+		hw_s++;
+	}
+
+	es.nrOfVisibleSprites -= invisibleSprites;
+
 	struct sprite *s = &es.ld.lw_sprites[0];
 	/* current sprite pointer at the end of the first half of the framebuffer memory */
 	struct current_sprite *cs = (struct current_sprite *)(arduboy->getBuffer() + 512 - sizeof(struct current_sprite));
-	struct heavyweight_sprite *hw_s = &es.hw_sprites[0];
 
-	for (uint8_t i = 0; i < TOTAL_SPRITES; i++, s++) {
+	/*
+	 * loop through dynamic sprites and projectiles from special walls
+	 */
+	for (uint8_t i = 0; i < (es.ld.nr_of_sprites + es.ld.maxSpecialWalls); i++, s++) {
+		/* stop if the maximum number of visible sprites has been reached */
+		if (es.nrOfVisibleSprites == MAX_VISIBLE_SPRITES)
+			break;
+
 		/* sprite is not active */
 		if (IS_INACTIVE(s->flags))
 			continue;
@@ -3090,8 +3231,9 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 *  if sprite is farther away than maxRayLength then it is considered as
 		 *  non visible
 		 */
-		if ((cs->distance > maxRayLength) || (cs->distance == 0))
+		if ((cs->distance > /*maxRayLength*/(SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)) || (cs->distance == 0)) {
 			continue;
+		}
 
 		spriteAngle = xlateQuadrantToAngle[quadrant - 1];
 		if (quadrant == 1 || quadrant == 4)
@@ -3139,8 +3281,6 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			hw_s->spriteAngle = spriteAngle;
 			hw_s++;
 			es.nrOfVisibleSprites++;
-			if (es.nrOfVisibleSprites == MAX_VISIBLE_SPRITES)
-				break;
 		}
 
 		/* store current sprite angle */
@@ -3151,7 +3291,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 * sprite
 		 */
 		uint8_t new_state = SPRITE_STATE_GET(cs);
-		if (i >= es.ld.nr_of_sprites) {
+		if (SPRITE_IS_PROJECTILE(cs)) {
 			if (cs->distance < 16) {
 				/* inflict damage on the player if close enough */
 				es.playerHealth--;
@@ -3215,21 +3355,30 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		}
 	}
 
-	// TODO add another loop for simple sprites
-
 	/*
 	 * go through all visible sprites and precalc some rendering attributes and
 	 * assign hwid
 	 */
+	struct sprite _s;
 	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
-		struct sprite *s = &es.ld.lw_sprites[hw_s->id];
+		struct sprite *s;
+		if (hw_s->id < SPRITES_START) {
+			s = &es.ld.lw_sprites[hw_s->id];
+		} else {
+			s = &_s;
+			_s.flags = es.ld.static_sprites[hw_s->id - 0x80];
+		}
 
 		/* calculate sprite pointer into flash based on the type */
-		if (hw_s->id < es.ld.nr_of_sprites)
-			hw_s->p = spriteData_flashoffset  + (SPRITE_TYPE_GET(s) * spriteDataAlignment);
-		else
-			hw_s->p = spriteData_flashoffset  + (PROJECTILE_TYPE_GET(s) * spriteDataAlignment);
+		if (SPRITE_IS_PROJECTILE(s)) {
+			if (hw_s->id < SPRITES_START)
+				hw_s->p = spriteData_flashoffset  + (/*PROJECTILE_TYPE_GET(s)*/0 * spriteDataAlignment);
+			else
+				hw_s->p = spriteData_flashoffset  + (/*((s->flags >> 1) & 0x3f)*/0 * spriteDataAlignment);
+		} else {
+			hw_s->p = spriteData_flashoffset  + (0/*SPRITE_TYPE_GET(s)*/ * spriteDataAlignment);
+		}
 
 		/* add offset to skip mask */
 		hw_s->p += SPRITE_SIZE;
@@ -3238,7 +3387,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 * calculate the side the player is looking at the sprite
 		 *   only do this if sprite is visible and not a simple one (e.g. item)
 		 */
-		if (hw_s->id < es.ld.nr_of_sprites) {
+		if (!SPRITE_IS_PROJECTILE(s)) {
 			/*
 			 * calculate the angle the player is looking at the sprite
 			 */
@@ -3260,7 +3409,8 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			/* front right back left */
 			const uint16_t llimits[] = {225, 315, 45, 135};
 
-			for (uint8_t side = 0; side < 4; side++) {
+			uint8_t side;
+			for (side = 0; side < 4; side++) {
 				uint16_t l, r;
 				l = llimits[side];
 				uint16_t viewAngle = SPRITE_VIEWANGLE_GET(s) * 90;
@@ -3271,12 +3421,11 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 				if (r >= 360)
 					r -= 360;
 				if ((uint16_t)hw_s->spriteAngle >= l && (uint16_t)hw_s->spriteAngle < r) {
-					hw_s->vSide = side;
+					/* add offset for the correct side */
+					hw_s->p += SPRITE_SIZE * side;
 					break;
 				}
 			}
-			/* add set offset for the correct side */
-			hw_s->p += SPRITE_SIZE * hw_s->vSide;
 		}
 
 		/*
@@ -3351,7 +3500,9 @@ void Engine::render(void)
 		if (es.doDamageFlags & 1) {
 			/* wall damage */
 			es.blinkScreen = 1;
+#ifndef CONFIG_GOD_MODE
 			es.playerHealth -= 10;
+#endif
 		}
 		es.doDamageFlags = 0;
 	}
@@ -3372,7 +3523,7 @@ void Engine::render(void)
 	}
 
 	/* calculate screen Y start depending on the head position */
-	int16_t screenYStart = (int16_t)((es.vHeadPosition >> 4) + vMove);
+	int16_t screenYStart = 0; //(int16_t)((es.vHeadPosition >> 4) + vMove);
 
 	/* leftmost angle of the players current field of view */
 	uint16_t playerFOVLeftAngle = 360 + es.ld.playerAngle - FIELD_OF_VIEW / 2;
@@ -3776,6 +3927,7 @@ horizontal_intersection_done2:
 					diffX = vX - es.ld.playerX;
 				else
 					diffX = es.ld.playerX - vX;
+
 				uint16_t diffY;
 				if (es.ld.playerY < vY)
 					diffY = vY - es.ld.playerY;
@@ -3883,6 +4035,7 @@ horizontal_intersection_done2:
 				wallX = 0;
 				break;
 			}
+
 			/*
 			 * calculate wallX for doors
 			 */
@@ -4009,8 +4162,12 @@ horizontal_intersection_done2:
 		 * remember the maximum ray length where displaying sprites would make
 		 * sense
 		 */
+// XXX
+#if 0
 		if ((rayLength > maxRayLength) && ((rayLength < SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)))
 			maxRayLength = rayLength;
+#endif
+		maxRayLength = rayLength > maxRayLength? rayLength: maxRayLength;
 		/*
 		 * save ray information into frame buffer
 		 *
@@ -4287,6 +4444,8 @@ bitSet(PORTF, 1);
 			rayAngle -= 360;
 bitClear(PORTF, 1);
 	}
+
+	es.nrOfVisibleSprites = 0;
 
 #if defined(CONFIG_FPS_MEASUREMENT)
 	drawing_start = millis();

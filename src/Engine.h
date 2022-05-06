@@ -9,7 +9,7 @@
 #define NEW_SPRITES
 #include "EngineData.h"
 
-#define AUDIO
+//#define AUDIO
 /*
  * enable some simple cache when reading map data
  */

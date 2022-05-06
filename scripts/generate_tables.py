@@ -106,7 +106,6 @@ if __name__ == "__main__":
 		cfile.write("\n};\n");
 		print("done")
 
-
 		#
 		# tanByX
 		#
@@ -155,53 +154,23 @@ if __name__ == "__main__":
 		print("done")
 
 		print("generating raylengths table...", end=' ')
-		newPatterns = OrderedDict()
-		f = 0.0
-		maxD = 0
-		for wh in range(1, 700000):
-			whc = 1.0 * wh / 100
-			s = 32.0 / whc
-			f = 0.0
-			key = ""
-			v = 1
-			x = 0
-			pxBase = 1.0 / s
-			nrOfHash = 0
-			for t in range(32):
-				p = f + 1.0 / s
-				f = p - int(p)
-				if int(p) > int(pxBase):
-					key += '#'
-					x += v
-					nrOfHash += 1
-				else:
-					key += 'x'
-				v <<= 1
-			elm = 'x'
-			if nrOfHash > 16:
-				elm = '#'
-
-			first = 0
-			fv = 32
-			lv = 0
-			for c in key:
-				if c == elm:
-					lv += 1
-				else:
-					if not first:
-						first = 1
-					lv = 0
-
-			d = 0
-			if fv > lv:
-				d = fv - lv
-			else:
-				d = lv - fv
-
-			if d > maxD:
-				maxD = d
-
-			newPatterns[whc] = (int(2048 * s), x, int(pxBase), key, fv, lv, d)
+		#newPatterns = OrderedDict()
+		#f = 0.0
+		#for wh in range(1, 700000):
+		#	whc = 1.0 * wh / 100
+		#	s = 32.0 / whc
+		#	f = 0.0
+		#	v = 1
+		#	x = 0
+		#	pxBase = 1.0 / s
+		#	for t in range(32):
+		#		p = f + 1.0 / s
+		#		f = p - int(p)
+		#		if int(p) > int(pxBase):
+		#			x += v
+		#		v <<= 1
+		#
+		#	newPatterns[whc] = (int(2048 * s), x, int(pxBase))
 
 		#
 		# write out binary data
@@ -212,31 +181,43 @@ if __name__ == "__main__":
 		with open("rayLengths.bin", 'wb') as bfile:
 			wallHeight = blockSize * distanceToProjectionPlane
 			for rl in range(fogOfWarDistance + 1):
-				wht = wallHeight
 				wh = 1.0 * wallHeight
 				if rl:
-					wht = wallHeight / rl
 					wh /= rl
 
 				if wh > 1:
 					wh -= 1
-				if wht > 1:
-					wht -= 1
 
-				whf = round(wh, 2)
-				scale = newPatterns[whf][0]
+				# make wallheights even, it does look better
+				if round(wh) % 2:
+					wh += 1
 
-				px_base = newPatterns[whf][2]
+				whf = wh # round(wh, 2)
 
+				##################################
+				s = 32.0 / whf
+				f = 0.0
+				v = 1
+				x = 0
+				pxBase = 1.0 / s
+				# generate pixel pattern
+				p = 0
+				for t in range(32):
+					p += 1.0 / s
+					if int(p) > int(pxBase):
+						x += v
+					v <<= 1
+					p -= int(p)
+
+				scale = int(2048 * s)
+				px_base = int(pxBase)
+				##################################
 				bfile.write(struct.pack('<H', round(whf))) # wallheight
 				bfile.write(struct.pack('<H', scale)) # scale
 				bfile.write(struct.pack('<B', px_base)) # px_base
-				pattern = newPatterns[whf][1]
 
-				key = newPatterns[whf][3]
-
-				bfile.write(struct.pack('<I', pattern))
-				#print("%f %4u %3u %s fv %2u lv %2u d %d" % (whf, scale, px_base, key, newPatterns[whf][4], newPatterns[whf][5], newPatterns[whf][6]))
+				bfile.write(struct.pack('<I', x))
+				#print("%3.3u wh %2.2u s %2.2u px %u p %4.4x" % (rl, round(whf), scale, px_base, x))
 		print("done")
 
 		print("generating distance table...", end=' ')

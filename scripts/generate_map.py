@@ -16,6 +16,7 @@ maxDoorCount = 5
 maxSpriteCount = 40
 maxProjectileCount = 5
 maxQuestCount = 16
+maxStaticSpriteCount = 100
 
 #
 # [4096] map data
@@ -184,7 +185,7 @@ def save_binary_data(f_data, f, padding=True):
 	for m in range(size):
 		mapValue = 0
 		mapX = m % mapWidth
-		mapY = m / mapWidth
+		mapY = int(m / mapWidth)
 		if f_data[m] == "S " or f_data[m] == "I ":
 			# find static sprite and modify the map value to be 0x80 + <static sprite id>
 			for s in mapStaticSprites.values():
@@ -309,8 +310,8 @@ def trackStaticSprite(hfile, tag, x, y):
 	totalSpriteCount += 1
 
 	s = mapStaticSprites[spriteName]
-	s["map-x"] = x * blockSize + halfBlockSize
-	s["map-y"] = y * blockSize + halfBlockSize
+	s["map-x"] = x # * blockSize + halfBlockSize
+	s["map-y"] = y # * blockSize + halfBlockSize
 	s["id"] = staticSpriteCount
 
 	staticSpriteCount += 1
@@ -497,12 +498,12 @@ def createMovingWall(line):
 	movingWalls[wallID] = [flags, parts[5]]
 
 sTranslation = {
-	"S_TYPE0": 0x00,
-	"S_TYPE1": 0x01,
-	"E_TYPE0": 0x02,
-	"E_TYPE1": 0x03,
-	"E_TYPE2": 0x04,
-	"E_TYPE3": 0x05,
+	"E_TYPE0": 0x00,
+	"E_TYPE1": 0x01,
+	"E_TYPE2": 0x02,
+	"E_TYPE3": 0x03,
+	"S_TYPE0": 0x04,
+	"S_TYPE1": 0x05,
 	"I_TYPE0": 0x06,
 	"I_TYPE1": 0x07,
 	"I_TYPE2": 0x08,
@@ -526,8 +527,6 @@ def createSprite(line):
 	spriteVOffset = int(parts[3], 0)
 	spriteHealth = int(parts[4], 0)
 	spriteFlags = int(parts[5])
-	if spriteFamily != 'E':
-		spriteFlags += 1 << 0 #" | S_SIMPLE"
 
 	spriteType = "%s_TYPE%u" % (spriteFamily, int(spriteVersion, 0))
 	spriteType = sTranslation[spriteType]
@@ -537,7 +536,6 @@ def createSprite(line):
 	sprite["type"] = spriteType
 	sprite["voffset"] = spriteVOffset
 	sprite["health"] = spriteHealth
-	sprite["flags"] = spriteFlags
 	spriteID = "S%u" % totalSpriteTableEntries
 	totalSpriteTableEntries += 1
 
@@ -599,8 +597,12 @@ def createSpecialWall(line):
 	parts = line.split()
 
 	s = {}
+	# add shooting direction to flags
 	s["flags"] = specialWallFlags[parts[1].lower()]
-	s["flags"] += int(parts[2]) << 3
+	# add texture id to flags
+	s["flags"] += (int(parts[2]) & 0xf) << 3
+	# set projectile flag in flags
+	s["flags"] += 0x80
 
 	mapSpecialWalls[parts[0]] = s
 
@@ -615,10 +617,11 @@ if __name__ == "__main__":
 		hfile.write("#define MAX_MOVING_WALLS     %u\n" % maxMovingWallCount)
 		hfile.write("#define MAX_DOORS            %u\n" % maxDoorCount)
 		hfile.write("#define MAX_TRIGGERS         %u\n" % maxTriggerCount)
-		hfile.write("#define MAX_SPRITES          %u /* static sprites */\n" % maxSpriteCount)
+		hfile.write("#define MAX_SPRITES          %u /* non static sprites */\n" % maxSpriteCount)
 		hfile.write("#define MAX_PROJECTILES      %u /* projectiles */\n" % maxProjectileCount)
-		hfile.write("#define TOTAL_SPRITES        %u /* static sprites + projectiles */\n" % (maxSpriteCount + maxProjectileCount))
+		hfile.write("#define TOTAL_SPRITES        %u /* non static sprites + projectiles */\n" % (maxSpriteCount + maxProjectileCount))
 		hfile.write("#define MAX_QUESTS           %u\n" % maxQuestCount)
+		hfile.write("#define MAX_STATIC_SPRITES   %u\n" % maxStaticSpriteCount)
 
 		total_size = 0
 		artifacts_dir = sys.argv[1] + "/"
@@ -849,7 +852,7 @@ if __name__ == "__main__":
 
 					# compose flags
 					flags = 0
-					flags |= (s["type"] & 0x2) << 3
+					flags |= (s["type"] & 0x3) << 3
 					bfile.write(struct.pack('<B', flags))
 
 				if spriteCount > maxSpriteCount:
@@ -875,25 +878,31 @@ if __name__ == "__main__":
 
 				#################################################################
 				# write static sprites init data
+				#
 
-				#for spr in list(mapStaticSprites.keys()):
-				#	s = mapStaticSprites[spr]
-				#	_id = s["id"]
-				#	bfile.write(struct.pack('<B', s["flags"]))
+				for spr in list(mapStaticSprites.keys()):
+					s = mapStaticSprites[spr]
+					_id = s["id"]
+					# compose flags
+					flags = 1                  # active
+					flags |= 0x80              # non-shootable
+					flags |= s["type"] << 1    # type
+					bfile.write(struct.pack('<B', flags))
 
-				#if spriteCount > maxSpriteCount:
-				#	print(("Error: Map " + map_filename + " has too many sprites (%u/%u)\n" % (spriteCount, maxSpriteCount)))
-				#	sys.exit()
+				if staticSpriteCount > maxStaticSpriteCount:
+					print(("Error: Map " + map_filename + " has too many static sprites (%u/%u)\n" % (staticSpriteCount, maxStaticSpriteCount)))
+					sys.exit()
 
 				# pad up to max sprite count
-				#for pad in range(maxSpriteCount + maxProjectileCount - spriteCount):
-				#	bfile.write(struct.pack('<B', 0))
+				for pad in range(maxStaticSpriteCount - staticSpriteCount):
+					bfile.write(struct.pack('<B', 0))
 
 
 
 				#################################################################
 				# write additional map information
 				bfile.write(struct.pack('<B', spriteCount))
+				bfile.write(struct.pack('<B', len(mapSpecialWalls))) # save number of special walls
 
 				#################################################################
 				# write players init data
@@ -922,7 +931,6 @@ if __name__ == "__main__":
 				#
 				# write special wall data
 				#
-				swfile.write(struct.pack('<B', len(mapSpecialWalls))) # save number of special walls
 				for sw in list(mapSpecialWalls.keys()):
 					s = mapSpecialWalls[sw]
 					mapX = s["map-x"]

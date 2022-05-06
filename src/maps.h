@@ -59,21 +59,21 @@
 /*
  * fixed sprites
  */
-#define SPRITES_START        0x80
-#define S_TYPE_FIRST         0x80
+#define S_TYPE_FIRST         0x84
 #define S_TYPE0              S_TYPE_FIRST
-#define S_TYPE1              0x81
+#define S_TYPE1              0x85
 #define S_TYPE_LAST          S_TYPE1
 #define S_TYPE_MAX_NR        (S_TYPE_LAST - S_TYPE_FIRST)
 /*
  * enemies
  */
-#define ENEMIES_START        0x82
-#define E_TYPE_FIRST         0x82
+#define SPRITES_START        0x80
+#define ENEMIES_START        0x80
+#define E_TYPE_FIRST         0x80
 #define E_TYPE0              E_TYPE_FIRST
-#define E_TYPE1              0x83
-#define E_TYPE2              0x84
-#define E_TYPE3              0x85
+#define E_TYPE1              0x81
+#define E_TYPE2              0x82
+#define E_TYPE3              0x83
 #define E_TYPE_LAST          E_TYPE3
 #define E_TYPE_MAX_NR        (E_TYPE_LAST - E_TYPE_FIRST)
 /*
@@ -104,7 +104,7 @@
 /*----------------------------------------------------------
  * sprite configuration
  *----------------------------------------------------------*/
-#define MAX_VISIBLE_SPRITES    10 // TODO ?
+#define MAX_VISIBLE_SPRITES    20
 
 #define F_MASK                 0x3
 #define S_ENEMY                (0 << 0)

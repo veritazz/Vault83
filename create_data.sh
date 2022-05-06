@@ -20,12 +20,12 @@ o=.
 # assets that have a mask layer
 # TODO sort them!
 assets="
-sprite-barrel
-sprite-spider
 enemy-1
 enemy-2
 enemy-3
 enemy-4
+sprite-barrel
+sprite-spider
 item-key-1
 item-weapon-2
 item-weapon-3

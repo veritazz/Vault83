@@ -33,14 +33,16 @@ struct renderInfo {
 
 #define SPRITE_VIEWANGLE_GET(s)       ((((s)->flags) >> 1) & 0x3)
 #define SPRITE_TYPE_GET(s)            ((((s)->flags) >> 3) & 0x3)
-#define SPRITE_STATE_GET(s)           ((((s)->flags) >> 5) & 0x7)
+#define SPRITE_STATE_GET(s)           ((((s)->flags) >> 5) & 0x3)
 
-#define PROJECTILE_TYPE_GET(s)        (((s)->flags) >> 3)
+#define PROJECTILE_TYPE_GET(s)        ((((s)->flags) >> 3) & 0xf)
 
 #define SPRITE_VIEWANGLE_SET(s, _v)   (s)->flags = ((s)->flags & ~(0x3 << 1)) | (_v << 1)
 #define SPRITE_TYPE_SET(s, _v)        (s)->flags = ((s)->flags & ~(0x3 << 3)) | (_v << 3)
-#define SPRITE_STATE_SET(s, _v)       (s)->flags = ((s)->flags & ~(0x7 << 5)) | (_v << 5)
+#define SPRITE_STATE_SET(s, _v)       (s)->flags = ((s)->flags & ~(0x3 << 5)) | (_v << 5)
 #define SPRITE_XY_SET(s, x, y)        ((s)->xy = (uint24_t)(x) | (uint24_t)(y) << 12)
+
+#define SPRITE_IS_PROJECTILE(s)       ((s)->flags & 0x80)
 
 struct sprite {
 	uint24_t xy;     /* lsb 12bits for x, msb 12bits for y */
@@ -49,13 +51,15 @@ struct sprite {
 			  * bit[0]  : 0 = active, 1 = inactive
 			  * bit[2:1]: viewAngle, 0 = 0, 1 = 90, 2 = 180, 3 = 270
 			  * bit[4:3]: type
-			  * bit[7:5]: state
+			  * bit[6:5]: state
+			  * bit[7]  : 1 = projectile, 0 = else
 			  */
 			 /* flags for projectiles
 			  *
 			  * bit[0]  : 0 = active, 1 = inactive
 			  * bit[2:1]: viewAngle, 0 = 0, 1 = 90, 2 = 180, 3 = 270
-			  * bit[7:3]: type
+			  * bit[6:3]: type
+			  * bit[7]  : 1 = projectile, 0 = else
 			  */
 } /* = 4 bytes */;
 
@@ -84,6 +88,7 @@ struct lightweight_sprite {
 }; /* = 14 bytes */
 #endif
 
+#define HWSPRITE_XY_SET(hws, x, y)   ((hws)->p = (uint24_t)(x) | (uint24_t)(y) << 12)
 /*
  * data structure for sprites that are actually drawn on the screen
  */
@@ -92,10 +97,9 @@ struct heavyweight_sprite {
 	int16_t screenY;             // TODO take from flash 2  screen y coordinate of the sprite (where drawing will start)
 	int16_t spriteDisplayHeight; // TODO take from flash 2  sprite height in pixel that will be drawn
 	uint16_t spriteAngle;        // TODO take from flash (atan) 2  angle the player is looking at the sprite
-	uint8_t vSide;               // 1  the side the player is looking at, 0 = front, 1 = right, 2 = back, 3 = left
 	uint8_t id;
 	uint16_t distance;
-}; /* = 11 bytes */
+}; /* = 10 bytes */
 
 /* size = 6 bytes */
 struct door {
@@ -164,7 +168,10 @@ struct level_initdata {
 #else
 	struct lightweight_sprite lw_sprites[MAX_SPRITES];
 #endif
+	uint8_t static_sprites[MAX_STATIC_SPRITES];
+
 	uint8_t nr_of_sprites;              /* number of non static sprites */
+	uint8_t maxSpecialWalls;            /* number of special walls */
 
 	uint16_t playerX;                   /* players x coordinate in pixel */
 	uint16_t playerY;                   /* players y coordinate in pixel */
