@@ -2501,7 +2501,7 @@ constexpr uint24_t levelData_flashoffset                    = 0x004800;
  *   quests                                      : 1
  *   special walls                              : 4
  * ----------------------------------------------------
- *   memory used for map                  (bytes): 4096
+ *   memory used for map                  (bytes): 1024
  *   memory used for triggers             (bytes): 20
  *   memory used for moving walls         (bytes): 24
  *   memory used for doors                (bytes): 9
@@ -2509,7 +2509,7 @@ constexpr uint24_t levelData_flashoffset                    = 0x004800;
  *   memory used for quests               (bytes): 18
  *   memory used for special walls       (bytes): 13
  * ----------------------------------------------------
- *   sum                                  (bytes): 4248
+ *   sum                                  (bytes): 1176
  * ====================================================
  */
 constexpr uint24_t level1_flashoffset                       = 0x004800;
@@ -2517,23 +2517,23 @@ constexpr uint24_t level1_flashoffset                       = 0x004800;
  * ==================================================
  *  Summary for ../assets/map_level2.txt
  * ==================================================
- *   triggers                                    : 2
- *   doors                                       : 2
- *   moving walls                                : 3
- *   sprites                                     : 3
- *   static sprites                              : 2
- *   quests                                      : 0
- *   special walls                              : 0
+ *   triggers                                    : 4
+ *   doors                                       : 3
+ *   moving walls                                : 4
+ *   sprites                                     : 17
+ *   static sprites                              : 12
+ *   quests                                      : 1
+ *   special walls                              : 4
  * ----------------------------------------------------
- *   memory used for map                  (bytes): 4096
- *   memory used for triggers             (bytes): 10
- *   memory used for moving walls         (bytes): 18
- *   memory used for doors                (bytes): 6
- *   memory used for sprites              (bytes): 12
- *   memory used for quests               (bytes): 0
- *   memory used for special walls       (bytes): 1
+ *   memory used for map                  (bytes): 1024
+ *   memory used for triggers             (bytes): 20
+ *   memory used for moving walls         (bytes): 24
+ *   memory used for doors                (bytes): 9
+ *   memory used for sprites              (bytes): 68
+ *   memory used for quests               (bytes): 18
+ *   memory used for special walls       (bytes): 13
  * ----------------------------------------------------
- *   sum                                  (bytes): 4143
+ *   sum                                  (bytes): 1176
  * ====================================================
  */
 constexpr uint24_t level2_flashoffset                       = 0x006000;
@@ -2541,7 +2541,7 @@ constexpr uint16_t specialWallsDataAlignment                = 0x0080;
 constexpr uint24_t specialWallsData_flashoffset             = 0x007800;
 constexpr uint24_t level1_specialWalls_flashoffset          = 0x007800;
 constexpr uint24_t level2_specialWalls_flashoffset          = 0x007880;
-constexpr uint24_t rayLengths_flashoffset                   = 0x007880;
-constexpr uint24_t distances_flashoffset                    = 0x008b80;
+constexpr uint24_t rayLengths_flashoffset                   = 0x007900;
+constexpr uint24_t distances_flashoffset                    = 0x008c00;
 
 #endif

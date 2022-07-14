@@ -7,8 +7,8 @@ from collections import OrderedDict
 
 blockSize = 64
 halfBlockSize = int(blockSize / 2)
-mapWidth = 64
-mapHeight = 64
+mapWidth = 32
+mapHeight = 32
 
 maxTriggerCount = 5
 maxMovingWallCount = 5
@@ -210,7 +210,7 @@ def usage():
 def readLine(mdatafile):
 	mdata = []
 	line = mdatafile.readline().rstrip('\n')
-	if not line or len(line) != 191:
+	if len(line) == 0:
 		return None
 	_line = [s for s in line if s != '|']
 	for i in range(0, len(_line), 2):
@@ -661,10 +661,12 @@ if __name__ == "__main__":
 			with open(map_filename) as mdatafile, open(output_dir + "level%u" % level + ".bin", 'wb') as bfile, open(output_dir + "level%u" % level + ".txt", 'w') as tfile, open(output_dir + "level%u_quests" % level + ".bin", "wb") as qbfile, open(output_dir + "level%u_specialWalls" % level + ".bin", "wb") as swfile:
 				while True:
 					mdata = readLine(mdatafile)
+
 					if not mdata:
 						break
 					lines += 1
 					mapData += mdata
+
 					if lines == mapHeight:
 						break
 

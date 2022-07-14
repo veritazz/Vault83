@@ -144,7 +144,7 @@ struct intersect {
  *  8*16 (8 rows, 16 columns)
  *
  * Addressing:
- *  cache row = mapX / 8 (maximum mapX is 63, so result is 0..7)
+ *  cache row = mapX % 8 (result is 0..7)
  *  cache column = mapY % 16 (result is 0..15)
  *
  * Cache entry size is 3 bytes so each cache row could hold 21 entries

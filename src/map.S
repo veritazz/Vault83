@@ -1,5 +1,6 @@
 #include "map.h"
 #include "asm_offsets.h"
+#include "leveldata.h"
 
 #include <avr/io.h>
 
@@ -90,9 +91,9 @@ checkIgnoreBlock:
 	; [programDataPage[0] + ]
 	;
 	;
-	; 64 * r22 + r24
-	ldi r25, 64                          ; (1) load 64 into register (map width)
-	mul r25, r22                         ; (2) mapY * 64
+	; MAP_WIDTH * r22 + r24
+	ldi r25, MAP_WIDTH                   ; (1) load map width into register
+	mul r25, r22                         ; (2) mapY * map width
 	add r0, r24                          ; (1) add mapX
 	movw r24, r0                         ; (1) mov r1:r0 to r25:r24
 	eor r1, r1                           ; (1) zero r1
@@ -197,8 +198,8 @@ readThroughCache2:
 	; [programDataPage[0] + ]
 	;
 	;
-	; 64 * r22 + r24
-	ldi r23, 64                          ; (1)
+	; MAP_WIDTH * r22 + r24
+	ldi r23, MAP_WIDTH                   ; (1)
 	mul r23, r20                         ; (2)
 	add r0, r21                          ; (1)
 	movw r24, r0                         ; (1)

@@ -1,10 +1,8 @@
 #ifndef __LEVELDATA_H
 #define __LEVELDATA_H
 
-#include <stdint.h>
-
-#define MAP_WIDTH            64
-#define MAP_HEIGHT           64
+#define MAP_WIDTH            32
+#define MAP_HEIGHT           32
 #define MAX_MOVING_WALLS     5
 #define MAX_DOORS            5
 #define MAX_TRIGGERS         5
