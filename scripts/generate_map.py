@@ -611,7 +611,6 @@ if __name__ == "__main__":
 
 		hfile.write("#ifndef __LEVELDATA_H\n")
 		hfile.write("#define __LEVELDATA_H\n\n")
-		hfile.write("#include <stdint.h>\n\n")
 		hfile.write("#define MAP_WIDTH            %u\n" % mapWidth)
 		hfile.write("#define MAP_HEIGHT           %u\n" % mapHeight)
 		hfile.write("#define MAX_MOVING_WALLS     %u\n" % maxMovingWallCount)
