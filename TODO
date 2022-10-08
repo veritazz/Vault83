@@ -8,3 +8,6 @@
 # Add sector based sprite handling?
 # Add sprite respawn
 # Fix stencil buffer
+
+# issues
+- check if FX::readEnd() is really required at all places (maybe deselect is enough just before display update)
