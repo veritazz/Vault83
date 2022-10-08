@@ -147,8 +147,8 @@ struct level_initdata {
 	struct trigger triggers[MAX_TRIGGERS]; /* list of triggers on the map */
 	struct movingWall movingWalls[MAX_MOVING_WALLS]; /* list of moving walls on the map */
 	struct door doors[MAX_DOORS]; /* list of doors on the map */
-	struct sprite lw_sprites[TOTAL_SPRITES];
-	uint8_t static_sprite_flags[MAX_SPRITES];
+	struct sprite dynamic_sprites[TOTAL_SPRITES]; /* total number of dynamic sprites */
+	uint8_t dynamic_sprite_flags[MAX_SPRITES]; /* flags for sprites that have modifyable parameters, e.g. health */
 	uint8_t static_sprites[MAX_STATIC_SPRITES];
 
 	uint8_t nr_of_sprites;              /* number of non static sprites */

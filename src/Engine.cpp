@@ -781,8 +781,8 @@ uint8_t Engine::enemyStateRandomMove(struct current_sprite *cs, uint8_t speed)
 
 void Engine::doDamageToSprite(uint8_t id, uint8_t damage)
 {
-	uint8_t health = es.ld.static_sprite_flags[id];
-	struct sprite *s = &es.ld.lw_sprites[id];
+	uint8_t health = es.ld.dynamic_sprite_flags[id];
+	struct sprite *s = &es.ld.dynamic_sprites[id];
 
 	/* inflict enemy damage */
 	if (health <= damage) {
@@ -791,7 +791,7 @@ void Engine::doDamageToSprite(uint8_t id, uint8_t damage)
 	} else {
 		health -= damage;
 	}
-	es.ld.static_sprite_flags[id] = health;
+	es.ld.dynamic_sprite_flags[id] = health;
 }
 
 void Engine::checkAndDoDamageToSpriteByObjects(uint8_t id)
@@ -1059,7 +1059,7 @@ void Engine::updateSpecialWalls(void)
 	if (shootingWallCoolDown == 0) {
 		FX::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
 		for (uint8_t p = es.ld.nr_of_sprites; p < (es.ld.nr_of_sprites + es.ld.maxSpecialWalls); p++) {
-			struct sprite *s = &es.ld.lw_sprites[p];
+			struct sprite *s = &es.ld.dynamic_sprites[p];
 			if (!IS_INACTIVE(s->flags)) {
 				/* TODO what a waste, maybe seek? */
 				FX::readPendingUInt8();
@@ -1606,7 +1606,7 @@ void Engine::updateMoveables(void)
 		/* now check for all sprites if they take damage or will be pushed
 		 * back */
 		for (uint8_t i = 0; i < es.ld.nr_of_sprites; i++) {
-			struct sprite *s = &es.ld.lw_sprites[i];
+			struct sprite *s = &es.ld.dynamic_sprites[i];
 
 			/* only sprites will take damage */
 			es.currentDamageCategory = 2;
@@ -2904,7 +2904,7 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
 		struct sprite *s;
 		if (hw_s->id < SPRITES_START) {
-			s = &es.ld.lw_sprites[hw_s->id];
+			s = &es.ld.dynamic_sprites[hw_s->id];
 		} else {
 			s = &_s;
 			_s.flags = es.ld.static_sprites[hw_s->id - SPRITES_START];
@@ -3161,7 +3161,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 
 	es.nrOfVisibleSprites -= invisibleSprites;
 
-	struct sprite *s = &es.ld.lw_sprites[0];
+	struct sprite *s = &es.ld.dynamic_sprites[0];
 	/* current sprite pointer at the end of the first half of the framebuffer memory */
 	struct current_sprite *cs = (struct current_sprite *)(arduboy->getBuffer() + 512 - sizeof(struct current_sprite));
 
@@ -3383,7 +3383,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
 		struct sprite *s;
 		if (hw_s->id < SPRITES_START) {
-			s = &es.ld.lw_sprites[hw_s->id];
+			s = &es.ld.dynamic_sprites[hw_s->id];
 		} else {
 			s = &_s;
 			_s.flags = es.ld.static_sprites[hw_s->id - SPRITES_START];
