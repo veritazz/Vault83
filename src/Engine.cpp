@@ -110,14 +110,10 @@ static const uint8_t weaponDamage[NR_OF_WEAPONS] PROGMEM = {
 
 uint8_t Engine::simulateButtons(uint8_t buttons)
 {
-#if 0
-// TODO fix later
 	if (es.killedBySprite) {
-		struct lightweight_sprite *s = &es.ld.lw_sprites[es.killedBySprite - 1];
-		struct heavyweight_sprite *hw_s = &es.hw_sprites[s->hwid];
-		es.ld.playerAngle = hw_s->spriteAngle;
+		// TODO let the player look at the sprite that killed it
 	}
-#endif
+
 	return 0;
 }
 

@@ -5,8 +5,6 @@
 #include "maps.h"
 #include "leveldata.h"
 #include "ArduboyFX.h"
-
-#define NEW_SPRITES
 #include "EngineData.h"
 
 //#define AUDIO

@@ -73,21 +73,6 @@ struct current_sprite {
 	uint8_t flags;
 }  /* = 12 bytes */;
 
-#if 0
-struct lightweight_sprite {
-	uint16_t x;                  // 2  x position on the map
-	uint16_t y;                  // 2  y position on the map
-	uint8_t type;                // 1  sprite type (e.g. barrel, ammo, enemy)
-	int8_t vMove;                // 1  vertical screen offset
-	uint8_t health;              // 1  health of the sprite
-	uint8_t flags;               // 1  flags indicating if sprite is active and the like
-	uint16_t distance;           // 2  distance to the player
-	int16_t viewAngle;           // 2  view angle of the sprite
-	uint8_t state;               // 1  state of the sprite
-	uint8_t hwid;                // 1  index into the heavyweight sprite list
-}; /* = 14 bytes */
-#endif
-
 #define HWSPRITE_XY_SET(hws, x, y)   ((hws)->p = (uint24_t)(x) | (uint24_t)(y) << 12)
 /*
  * data structure for sprites that are actually drawn on the screen
@@ -162,12 +147,8 @@ struct level_initdata {
 	struct trigger triggers[MAX_TRIGGERS]; /* list of triggers on the map */
 	struct movingWall movingWalls[MAX_MOVING_WALLS]; /* list of moving walls on the map */
 	struct door doors[MAX_DOORS]; /* list of doors on the map */
-#ifdef NEW_SPRITES
 	struct sprite lw_sprites[TOTAL_SPRITES];
 	uint8_t static_sprite_flags[MAX_SPRITES];
-#else
-	struct lightweight_sprite lw_sprites[MAX_SPRITES];
-#endif
 	uint8_t static_sprites[MAX_STATIC_SPRITES];
 
 	uint8_t nr_of_sprites;              /* number of non static sprites */
