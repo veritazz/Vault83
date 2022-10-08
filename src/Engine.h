@@ -17,6 +17,7 @@
 //#define SERIAL_DEBUG
 //#define GPIO_DEBUG
 #define CONFIG_FPS_MEASUREMENT
+#define CONFIG_GOD_MODE
 /*
  * support level of detail rendering, each texture will be available in
  * size 1, 1/2, 1/4

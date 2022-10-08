@@ -729,8 +729,10 @@ uint8_t Engine::enemyStateAttack(struct current_sprite *cs, uint8_t speed)
 					state = ENEMY_RANDOM_MOVE;
 				} else {
 					/* inflict damage on the player */
+#ifndef CONFIG_GOD_MODE
 					es.playerHealth--;
 					es.blinkScreen = 1;
+#endif
 
 					/* remember who killed the player */
 					if (es.playerHealth == 0)
@@ -3294,8 +3296,10 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		if (SPRITE_IS_PROJECTILE(cs)) {
 			if (cs->distance < 16) {
 				/* inflict damage on the player if close enough */
+#ifndef CONFIG_GOD_MODE
 				es.playerHealth--;
 				es.blinkScreen = 1;
+#endif
 
 				if (es.playerHealth == 0)
 					es.killedBySprite = 0;
@@ -3499,8 +3503,8 @@ void Engine::render(void)
 	if ((es.frame % PLAYERS_DAMAGE_TIMEOUT) == 0) {
 		if (es.doDamageFlags & 1) {
 			/* wall damage */
-			es.blinkScreen = 1;
 #ifndef CONFIG_GOD_MODE
+			es.blinkScreen = 1;
 			es.playerHealth -= 10;
 #endif
 		}
