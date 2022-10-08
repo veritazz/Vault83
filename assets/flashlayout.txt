@@ -1,20 +1,52 @@
 #
 # sprite data
 #
-spriteData,,pad
 spriteDataAlignment, 256, constexpr_u16
-sprite-barrel.bin, sprite-barrel.txt, pad
-sprite-spider.bin, sprite-spider.txt, pad
+enemySpriteData,, pad
 enemy-1.bin, enemy-1.txt, pad
 enemy-2.bin, enemy-2.txt, pad
 enemy-3.bin, enemy-3.txt, pad
 enemy-4.bin, enemy-4.txt, pad
+#
+# items sprite data
+#
+itemsSpriteData,, pad
 item-key-1.bin, item-key-1.txt, pad
 item-weapon-2.bin, item-weapon-2.txt, pad
 item-weapon-3.bin, item-weapon-3.txt, pad
 item-weapon-4.bin, item-weapon-4.txt, pad
 item-health-1.bin, item-health-1.txt, pad
 item-ammo-1.bin, item-ammo-1.txt, pad
+item-7.bin, item-7.txt, pad
+item-8.bin, item-8.txt, pad
+item-9.bin, item-9.txt, pad
+item-10.bin, item-10.txt, pad
+item-11.bin, item-11.txt, pad
+item-12.bin, item-12.txt, pad
+item-13.bin, item-13.txt, pad
+item-14.bin, item-14.txt, pad
+sprite-barrel.bin, sprite-barrel.txt, pad
+sprite-spider.bin, sprite-spider.txt, pad
+#
+# projectiles sprite data
+#
+projectilesSpriteData,, pad
+projectile-1.bin, projectile-1.txt, pad
+projectile-2.bin, projectile-2.txt, pad
+projectile-3.bin, projectile-3.txt, pad
+projectile-4.bin, projectile-4.txt, pad
+projectile-5.bin, projectile-5.txt, pad
+projectile-6.bin, projectile-6.txt, pad
+projectile-7.bin, projectile-7.txt, pad
+projectile-8.bin, projectile-8.txt, pad
+projectile-9.bin, projectile-9.txt, pad
+projectile-10.bin, projectile-10.txt, pad
+projectile-11.bin, projectile-11.txt, pad
+projectile-12.bin, projectile-12.txt, pad
+projectile-13.bin, projectile-13.txt, pad
+projectile-14.bin, projectile-14.txt, pad
+projectile-15.bin, projectile-15.txt, pad
+projectile-16.bin, projectile-16.txt, pad
 #
 # misc image data
 #
@@ -62,8 +94,8 @@ msg_key_collected.txt,, pad 32
 msg_weapon1_collected.txt,, pad 32
 msg_weapon2_collected.txt,, pad 32
 msg_weapon3_collected.txt,, pad 32
-msg_ammo_collected.txt,, pad 32
 msg_health_collected.txt,, pad 32
+msg_ammo_collected.txt,, pad 32
 msg_door_needs_key.txt,, pad 32
 msg_door_needs_trigger.txt,, pad 32
 msg_quest_pending.txt,, pad 32

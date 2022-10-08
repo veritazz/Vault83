@@ -51,35 +51,35 @@ V2 no  yes no 4 2
 V3 yes no  no 4 1
 
 # Sprites (S<id> <type> <version> <voffset> <health> <flags>)
-S0  I 0  8   0   0
-S1  E 0 -4  10   0
-S2  E 0 -4  10   0
-S3  E 0 -8  10   0
-S4  E 0  4  10   0
-S5  E 0  4  10   0
-S6  E 0 -3  10   0
-S7  E 0 -3  10   0
-S8  E 0 -3  10   0
-S9  E 0 -3  10   0
-S10  E 0 -3  10   0
-S11 E 0 -3  10   0
-S12 E 0 -3  10   0
-S13 E 0 -3  10   0
-S14 E 0 -3  10   0
-S15 E 0 -3  10   0
-S16 E 0 -3  10   0
-S17 E 0 -3  10   0
-S18 I 4  8   0   0
-S19 I 1  8   0   0
-S20 I 4  8   0   0
-S21 I 1  8   0   0
-S22 I 4  8   0   0
-S23 I 1  8   0   0
-S24 I 4  8   0   0
-S25 I 1  8   0   0
-S26 I 4  8   0   0
-S27 I 1  8   0   0
-S28 S 0  8   0   0
+S0  I  0  8   0   0
+S1  E  0 -4  10   0
+S2  E  0 -4  10   0
+S3  E  0 -8  10   0
+S4  E  0  4  10   0
+S5  E  0  4  10   0
+S6  E  0 -3  10   0
+S7  E  0 -3  10   0
+S8  E  0 -3  10   0
+S9  E  0 -3  10   0
+S10 E  0 -3  10   0
+S11 E  0 -3  10   0
+S12 E  0 -3  10   0
+S13 E  0 -3  10   0
+S14 E  0 -3  10   0
+S15 E  0 -3  10   0
+S16 E  0 -3  10   0
+S17 E  0 -3  10   0
+S18 I  4  8   0   0
+S19 I  1  8   0   0
+S20 I  4  8   0   0
+S21 I  1  8   0   0
+S22 I  4  8   0   0
+S23 I  1  8   0   0
+S24 I  4  8   0   0
+S25 I  1  8   0   0
+S26 I  4  8   0   0
+S27 I  1  8   0   0
+S28 S 14  8   0   0
 
 # Quests (enemy type counters, sprite type counters, item type counters, event type counters)
 Q0             0 0 0 0                  0 0              0 0 0 0           0 0 0 0 0 0 0 0

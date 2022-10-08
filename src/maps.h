@@ -59,38 +59,29 @@
 /*
  * fixed sprites
  */
-#define S_TYPE_FIRST         0x84
-#define S_TYPE0              S_TYPE_FIRST
-#define S_TYPE1              0x85
-#define S_TYPE_LAST          S_TYPE1
-#define S_TYPE_MAX_NR        (S_TYPE_LAST - S_TYPE_FIRST)
-/*
- * enemies
- */
 #define SPRITES_START        0x80
-#define ENEMIES_START        0x80
-#define E_TYPE_FIRST         0x80
-#define E_TYPE0              E_TYPE_FIRST
-#define E_TYPE1              0x81
-#define E_TYPE2              0x82
-#define E_TYPE3              0x83
-#define E_TYPE_LAST          E_TYPE3
-#define E_TYPE_MAX_NR        (E_TYPE_LAST - E_TYPE_FIRST)
-/*
- * items
- */
-#define I_TYPE_FIRST         0x86
+#define I_TYPE_FIRST         SPRITES_START
 #define I_TYPE0              I_TYPE_FIRST   /* the key */
-#define I_TYPE1              0x87           /* collectable weapon 1 */
-#define I_TYPE2              0x88           /* collectable weapon 2 */
-#define I_TYPE3              0x89           /* collectable weapon 3 */
-#define I_TYPE4              0x8a           /* collectable health */
-#define I_TYPE5              0x8b           /* collectable ammo */
-#define I_TYPE_LAST          I_TYPE5
+#define I_TYPE1              0x81           /* collectable weapon 1 */
+#define I_TYPE2              0x82           /* collectable weapon 2 */
+#define I_TYPE3              0x83           /* collectable weapon 3 */
+#define I_TYPE4              0x84           /* collectable health */
+#define I_TYPE5              0x85           /* collectable ammo */
+#define I_TYPE6              0x86
+#define I_TYPE7              0x87
+#define I_TYPE8              0x88
+#define I_TYPE9              0x89
+#define I_TYPE10             0x8a
+#define I_TYPE11             0x8b
+#define I_TYPE12             0x8c
+#define I_TYPE13             0x8d
+#define I_TYPE14             0x8e           /* barrel */
+#define I_TYPE15             0x8f           /* spider */
+#define I_TYPE_LAST          I_TYPE15
 #define STATUS_MSG_OFFSET    I_TYPE_FIRST   /* xlate from map id to message id */
 #define I_TYPE_MAX_NR        (I_TYPE_LAST - I_TYPE_FIRST)
 
-#define V_OF_S(i)            ((i) - SPRITES_START)   /* macro to get offset cleaned value of sprite */
+#define V_OF_S(i)            ((i) - I_TYPE_FIRST)    /* macro to get offset cleaned value of sprite */
 
 #define FOG                  0xef
 /*----------------------------------------------------------

@@ -497,21 +497,6 @@ def createMovingWall(line):
 	flags += int(parts[4]) << 1 # + " << 1"
 	movingWalls[wallID] = [flags, parts[5]]
 
-sTranslation = {
-	"E_TYPE0": 0x00,
-	"E_TYPE1": 0x01,
-	"E_TYPE2": 0x02,
-	"E_TYPE3": 0x03,
-	"S_TYPE0": 0x04,
-	"S_TYPE1": 0x05,
-	"I_TYPE0": 0x06,
-	"I_TYPE1": 0x07,
-	"I_TYPE2": 0x08,
-	"I_TYPE3": 0x09,
-	"I_TYPE4": 0x0a,
-	"I_TYPE5": 0x0b,
-};
-
 totalSpriteTableEntries = 0
 
 def createSprite(line):
@@ -520,20 +505,17 @@ def createSprite(line):
 	global totalSpriteTableEntries
 
 	parts = line.split()
-	# Sprites (S<id> <type> <version> <voffset> <flags>)
+	# Sprites (S<id> <type> <version> <voffset> <health> <flags>)
 	spriteName = parts[0]
 	spriteFamily = parts[1]
-	spriteVersion = parts[2]
+	spriteVersion = int(parts[2], 0)
 	spriteVOffset = int(parts[3], 0)
 	spriteHealth = int(parts[4], 0)
 	spriteFlags = int(parts[5])
 
-	spriteType = "%s_TYPE%u" % (spriteFamily, int(spriteVersion, 0))
-	spriteType = sTranslation[spriteType]
-
 	sprite = {}
 	sprite["name"] = spriteName
-	sprite["type"] = spriteType
+	sprite["type"] = spriteVersion
 	sprite["voffset"] = spriteVOffset
 	sprite["health"] = spriteHealth
 	spriteID = "S%u" % totalSpriteTableEntries

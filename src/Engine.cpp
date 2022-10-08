@@ -1046,10 +1046,10 @@ void Engine::textureEffectRotateLeft(const uint24_t p, uint8_t texX)
  * movement speed of enemies in pixel
  */
 static const uint8_t enemyMovementSpeeds [] PROGMEM = {
-	ENEMY0_MOVEMENT_SPEED, /* E_TYPE0  */
-	ENEMY1_MOVEMENT_SPEED, /* E_TYPE1 */
-	ENEMY2_MOVEMENT_SPEED, /* E_TYPE2 */
-	ENEMY3_MOVEMENT_SPEED, /* E_TYPE3 */
+	ENEMY0_MOVEMENT_SPEED,
+	ENEMY1_MOVEMENT_SPEED,
+	ENEMY2_MOVEMENT_SPEED,
+	ENEMY3_MOVEMENT_SPEED,
 };
 
 void Engine::updateSpecialWalls(void)
@@ -2911,7 +2911,7 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 			s = &es.ld.lw_sprites[hw_s->id];
 		} else {
 			s = &_s;
-			_s.flags = es.ld.static_sprites[hw_s->id - 0x80];
+			_s.flags = es.ld.static_sprites[hw_s->id - SPRITES_START];
 		}
 		/*
 		 * this ray might not reach the sprite
@@ -3006,6 +3006,15 @@ extern "C" const uint16_t xlateQuadrantToAngle[] __attribute__ ((aligned (8))) =
 
 void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxRayLength)
 {
+	/*
+	 * clip maxRayLength if bigger than the biggest distance possible,
+	 * this distance is calculated so the min display height is 6 pixels,
+	 * anything below is considered too far away
+	 */
+	if (maxRayLength > (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6))
+		maxRayLength = (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6);
+
+
 	/* rightmost angle of the players current field of view */
 	int16_t fovRight = fovLeft + FIELD_OF_VIEW;
 	if (fovRight >= 360)
@@ -3056,6 +3065,10 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		uint8_t qAngle;
 		int16_t minAngle;
 
+		/*
+		 * do not read the precalculated distance from flash if it is
+		 * expected to be too big
+		 */
 		if (dX < SPRITE_MAX_VDISTANCE && dY < SPRITE_MAX_VDISTANCE) {
 			FX::seekData(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
 			distance = FX::readPendingUInt8();
@@ -3064,13 +3077,22 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			qAngle = FX::readEnd();
 		}
 
+		if (distance > maxRayLength) {
+			/*
+			 * remove the sprite from hw_s list as it is too
+			 * far away to be displayed
+			 */
+			invisibleSprites++;
+			memcpy(hw_s, hw_s + 1, sizeof(hw_s) * (es.nrOfVisibleSprites - i));
+			continue;
+		}
+
 		spriteAngle = xlateQuadrantToAngle[quadrant - 1];
 		if (quadrant == 1 || quadrant == 4)
 			spriteAngle -= qAngle;
 		else
 			spriteAngle += qAngle;
 
-// TODO move down
 		hw_s->distance = distance;
 		hw_s->spriteAngle = spriteAngle;
 
@@ -3078,18 +3100,23 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		uint8_t flags = es.ld.static_sprites[sprite_id];
 		uint8_t type = (flags >> 1) & 0xf;
 
-		if (distance < 16) { //itemCollectableDistance:
+		if (distance < 48) { //itemCollectableDistance:
 			/*
-			 * for items make the screen blink
+			 * for collectable items make the screen blink, everything
+			 * else is just for decoration
 			 */
-			if (type >= V_OF_S(I_TYPE0)) {
+			if (type < V_OF_S(I_TYPE14)) {
 				es.blinkScreen = 1;
 				setStatusMessage(type - V_OF_S(STATUS_MSG_OFFSET));
 				/*
 				 * remove from sprite list, not very clever as
 				 * we always need to loop over all the sprites
 				 */
-				flags &= ~1;
+				invisibleSprites++;
+				memcpy(hw_s, hw_s + 1, sizeof(hw_s) * (es.nrOfVisibleSprites - i));
+
+				/* clear active flag */
+				es.ld.static_sprites[sprite_id] &= ~1;
 			}
 
 			uint8_t playerWeapons = es.playerWeapons;
@@ -3128,16 +3155,10 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			es.playerWeapons = playerWeapons;
 		}
 
-		if ((distance > maxRayLength) || (distance == 0)) {
-			/*
-			 * remove the sprite from hw_s list as it is too
-			 * far away to be displayed
-			 */
-			invisibleSprites++;
-			memcpy(hw_s, hw_s + 1, sizeof(hw_s) * (es.nrOfVisibleSprites - i));
-			continue;
-		}
-
+		/*
+		 * save the pointer into flash for convenience
+		 */
+		hw_s->p = itemsSpriteData_flashoffset + (type * spriteDataAlignment);
 
 		hw_s++;
 	}
@@ -3222,18 +3243,9 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		}
 
 		/*
-		 * nothing to do, sprite is too far away
-		 *
-		 *  Check distance so that the min height of the sprite will
-		 *  be at least 6 pixels.
-		 *  Only consider the smallest texture height. So for bigger
-		 *  textures the min size will be lower than 4 pixels but we
-		 *  gain some progmem by this simplyfication.
-		 *
-		 *  if sprite is farther away than maxRayLength then it is considered as
-		 *  non visible
+		 * nothing to do if sprite is too far away
 		 */
-		if ((cs->distance > /*maxRayLength*/(SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6)) || (cs->distance == 0)) {
+		if ((cs->distance > maxRayLength) || (cs->distance == 0)) {
 			continue;
 		}
 
@@ -3281,6 +3293,13 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			hw_s->id = i;
 			hw_s->distance = cs->distance;
 			hw_s->spriteAngle = spriteAngle;
+			/*
+			 * save the pointer into flash for convenience
+			 */
+			if (SPRITE_IS_PROJECTILE(cs))
+				hw_s->p = projectilesSpriteData_flashoffset + (SPRITE_TYPE_GET(s) * spriteDataAlignment);
+			else
+				hw_s->p = enemySpriteData_flashoffset + (SPRITE_TYPE_GET(s) * spriteDataAlignment);
 			hw_s++;
 			es.nrOfVisibleSprites++;
 		}
@@ -3314,7 +3333,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			}
 		} else {
 			/* set enemies movement speed */
-			uint8_t speed = pgm_read_uint8(&enemyMovementSpeeds[SPRITE_TYPE_GET(s) - V_OF_S(ENEMIES_START)]);
+			uint8_t speed = pgm_read_uint8(&enemyMovementSpeeds[SPRITE_TYPE_GET(s)]);
 
 			switch (new_state) {
 			case ENEMY_IDLE:
@@ -3371,17 +3390,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			s = &es.ld.lw_sprites[hw_s->id];
 		} else {
 			s = &_s;
-			_s.flags = es.ld.static_sprites[hw_s->id - 0x80];
-		}
-
-		/* calculate sprite pointer into flash based on the type */
-		if (SPRITE_IS_PROJECTILE(s)) {
-			if (hw_s->id < SPRITES_START)
-				hw_s->p = spriteData_flashoffset  + (/*PROJECTILE_TYPE_GET(s)*/0 * spriteDataAlignment);
-			else
-				hw_s->p = spriteData_flashoffset  + (/*((s->flags >> 1) & 0x3f)*/0 * spriteDataAlignment);
-		} else {
-			hw_s->p = spriteData_flashoffset  + (0/*SPRITE_TYPE_GET(s)*/ * spriteDataAlignment);
+			_s.flags = es.ld.static_sprites[hw_s->id - SPRITES_START];
 		}
 
 		/* add offset to skip mask */
