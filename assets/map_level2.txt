@@ -84,7 +84,7 @@ S28 S 14  8   0   0
 # Quests (enemy type counters, sprite type counters, item type counters, event type counters)
 Q0             0 0 0 0                  0 0              0 0 0 0           0 0 0 0 0 0 0 0
 
-# Special Walls (W<id> <direction> <texture id>)
+# Special Walls (W<id> <direction> <projectile id>)
 W0 SHOOT_RIGHT 0
 W1 SHOOT_UP    0
 W2 SHOOT_LEFT  1

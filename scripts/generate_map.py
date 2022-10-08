@@ -581,7 +581,7 @@ def createSpecialWall(line):
 	s = {}
 	# add shooting direction to flags
 	s["flags"] = specialWallFlags[parts[1].lower()]
-	# add texture id to flags
+	# add projectile id to flags
 	s["flags"] += (int(parts[2]) & 0xf) << 3
 	# set projectile flag in flags
 	s["flags"] += 0x80
