@@ -71,7 +71,7 @@ struct current_sprite {
 	uint16_t spriteAngle;
 	int16_t viewAngle;
 	uint8_t flags;
-};
+}  /* = 12 bytes */;
 
 #if 0
 struct lightweight_sprite {
