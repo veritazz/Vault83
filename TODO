@@ -1,11 +1,12 @@
 # Add terminal screen where the player can read some story
 # [done] Add shooting walls
+# Add trigger to activate push walls for secret places
 
 # Add Save/Load game support
 # add menu option for sound on/off, music on/off
 
 # Add teleporter?
-# Add sector based sprite handling?
+# [no] Add sector based sprite handling?
 # Add sprite respawn
 # Fix stencil buffer
 
