@@ -847,7 +847,7 @@ static const uint8_t xlateBlockHitToSide[] = {1, 0, 1, 2, 3, 2, 3, 0};
  */
 static uint8_t blockTextures[WALL_BLOCKS * 4] = {
 	 11,  11,  11,  11, // W0
-	  0,   1,   2,   3, // W1
+	  1,   1,   1,   1, // W1
 	  5,   6,   6,   0, // W2
 	  0,   0,   0,   0, // W3
 	  0,   0,   0,   0, // W4
