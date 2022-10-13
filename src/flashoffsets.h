@@ -738,21 +738,21 @@ constexpr uint24_t item_weapon_4_flashoffset                = 0x000700;
 /* item-health-1.bin height = 16 width = 16 */
 /* [0]
  * ________________
- * ________________
  * ___***___***____
  * __*****_*****___
  * _*************__
  * ***************_
- * ***************_
- * ***************_
- * ***************_
+ * ****************
+ * ****************
+ * ****************
+ * ****************
+ * ****************
  * ***************_
  * _*************__
  * __***********___
  * ___*********____
  * ____*******_____
  * _____*****______
- * ______***_______
  */
 
 /* item-health-1.bin height = 16 width = 16 */
@@ -3464,8 +3464,8 @@ constexpr uint24_t msg_key_collected_flashoffset            = 0x004700;
 constexpr uint24_t msg_weapon1_collected_flashoffset        = 0x004720;
 constexpr uint24_t msg_weapon2_collected_flashoffset        = 0x004740;
 constexpr uint24_t msg_weapon3_collected_flashoffset        = 0x004760;
-constexpr uint24_t msg_ammo_collected_flashoffset           = 0x004780;
-constexpr uint24_t msg_health_collected_flashoffset         = 0x0047a0;
+constexpr uint24_t msg_health_collected_flashoffset         = 0x004780;
+constexpr uint24_t msg_ammo_collected_flashoffset           = 0x0047a0;
 constexpr uint24_t msg_door_needs_key_flashoffset           = 0x0047c0;
 constexpr uint24_t msg_door_needs_trigger_flashoffset       = 0x0047e0;
 constexpr uint24_t msg_quest_pending_flashoffset            = 0x004800;
