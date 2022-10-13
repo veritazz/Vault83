@@ -42,7 +42,7 @@ D2 no  no no  7
 T0    OFF    ONESHOT    WALL         3      14
 T1    OFF    SWITCH     QUEST        1      14
 T2    OFF    ONESHOT    NEXT_LEVEL   255    14
-T3    OFF    SWITCH     DIALOG       1      14
+T3    OFF    TOUCH      DIALOG       1       1
 
 # Moving Walls (V<id> <damage> <active> <oneshot> <speed> <blockId>)
 V0 no  yes no 4 0

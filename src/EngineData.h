@@ -133,8 +133,10 @@ struct movingWall {
 struct trigger {
 	/*
 	 * bit     0: state: 0 = off, 1 = on
-	 * bit     1: type: 0 = one shot, 1 = switch
-	 * bit [2:4]: type of obj_id
+	 * bit [1:2]: type: 0 = one shot (goes either ON or OFF and remains in this state)
+	 *                  1 = switch (goes ON/OFF and resets after timeout)
+	 *                  2 = touch (goes ON and immediately OFF, no timeout)
+	 * bit [3:5]: type of obj_id
 	 *            0 = door
 	 *            1 = moving wall
 	 *            2 = dialog

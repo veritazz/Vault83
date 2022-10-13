@@ -448,11 +448,12 @@ triggerStates = {
 	"off"         : 0 << 0, #"TRIGGER_STATE_OFF     ",
 	"oneshot"     : 0 << 1, #"TRIGGER_TYPE_ONE_SHOT ",
 	"switch"      : 1 << 1, #"TRIGGER_TYPE_SWITCH   ",
-	"door"        : 0 << 2, #"TRIGGER_OBJ_DOOR      ",
-	"wall"        : 1 << 2, #"TRIGGER_OBJ_VMW       ",
-	"dialog"      : 2 << 2, #"TRIGGER_OBJ_DIALOG    ",
-	"next_level"  : 3 << 2, #"TRIGGER_OBJ_NEXT_LEVEL",
-	"quest"       : 4 << 2, #"TRIGGER_OBJ_QUEST     ",
+	"touch"       : 2 << 1, #"TRIGGER_TYPE_TOUCH    ",
+	"door"        : 0 << 3, #"TRIGGER_OBJ_DOOR      ",
+	"wall"        : 1 << 3, #"TRIGGER_OBJ_VMW       ",
+	"dialog"      : 2 << 3, #"TRIGGER_OBJ_DIALOG    ",
+	"next_level"  : 3 << 3, #"TRIGGER_OBJ_NEXT_LEVEL",
+	"quest"       : 4 << 3, #"TRIGGER_OBJ_QUEST     ",
 }
 
 def createTrigger(line):

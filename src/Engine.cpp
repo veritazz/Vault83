@@ -424,16 +424,23 @@ void Engine::activateTrigger(uint8_t mapX, uint8_t mapY)
 
 	for (uint8_t trigger = 0; trigger < MAX_TRIGGERS; trigger++) {
 		if (t->timeout == 0 && t->mapX == mapX && t->mapY == mapY) {
-			/* reset timeout */
-			t->timeout = TRIGGER_TIMEOUT;
+			uint8_t old_state;
 
-			uint8_t old_state = t->flags & TRIGGER_FLAG_STATE;
+			if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_TOUCH) {
+				/* old state is just the opposite of the current one */
+				old_state = (t->flags & TRIGGER_FLAG_STATE) ^ TRIGGER_STATE_ON;
+			} else {
+				/* reset timeout */
+				t->timeout = TRIGGER_TIMEOUT;
+
+				old_state = t->flags & TRIGGER_FLAG_STATE;
+			}
 
 			/* if of type switch, toggle state */
 			if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH) {
 				/* it is a switch, so toggle state */
 				t->flags ^= TRIGGER_STATE_ON;
-			} else {
+			} else if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_ONE_SHOT) {
 				/* just switch it on */
 				t->flags |= TRIGGER_STATE_ON;
 			}

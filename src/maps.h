@@ -203,16 +203,17 @@
 #define TRIGGER_STATE_ON      (1 << 0)
 #define TRIGGER_STATE_OFF     (0 << 0)
 
-#define TRIGGER_FLAG_TYPE     (1 << 1)
+#define TRIGGER_FLAG_TYPE     (0x3 << 1)
 #define TRIGGER_TYPE_ONE_SHOT (0 << 1)
 #define TRIGGER_TYPE_SWITCH   (1 << 1)
+#define TRIGGER_TYPE_TOUCH    (2 << 1)
 
-#define TRIGGER_FLAG_OBJ        (0x7 << 2)
-#define TRIGGER_OBJ_DOOR        (0x0 << 2)
-#define TRIGGER_OBJ_VMW         (0x1 << 2)
-#define TRIGGER_OBJ_DIALOG      (0x2 << 2)
-#define TRIGGER_OBJ_NEXT_LEVEL  (0x3 << 2)
-#define TRIGGER_OBJ_QUEST       (0x4 << 2)
+#define TRIGGER_FLAG_OBJ        (0x7 << 3)
+#define TRIGGER_OBJ_DOOR        (0x0 << 3)
+#define TRIGGER_OBJ_VMW         (0x1 << 3)
+#define TRIGGER_OBJ_DIALOG      (0x2 << 3)
+#define TRIGGER_OBJ_NEXT_LEVEL  (0x3 << 3)
+#define TRIGGER_OBJ_QUEST       (0x4 << 3)
 
 /*----------------------------------------------------------
  * quest configuration
