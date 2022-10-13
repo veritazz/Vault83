@@ -61,6 +61,13 @@ struct sprite {
 			  * bit[6:3]: type
 			  * bit[7]  : 1 = projectile, 0 = else
 			  */
+			 /* flags for static sprites
+			  *
+			  * bit[0]  : 0 = active, 1 = inactive
+			  * bit[2:1]: unused
+			  * bit[6:3]: type
+			  * bit[7]  : 1 = projectile, 0 = else
+			  */
 } /* = 4 bytes */;
 
 struct current_sprite {
@@ -78,10 +85,10 @@ struct current_sprite {
  * data structure for sprites that are actually drawn on the screen
  */
 struct heavyweight_sprite {
-	uint24_t p;                  // 3  flash pointer to the sprite graphics
-	int16_t screenY;             // TODO take from flash 2  screen y coordinate of the sprite (where drawing will start)
-	int16_t spriteDisplayHeight; // TODO take from flash 2  sprite height in pixel that will be drawn
-	uint16_t spriteAngle;        // TODO take from flash (atan) 2  angle the player is looking at the sprite
+	uint24_t p;                  // flash pointer to the sprite graphics
+	int16_t screenY;             // screen y coordinate of the sprite (where drawing will start)
+	int16_t spriteDisplayHeight; // sprite height in pixel that will be drawn
+	uint16_t spriteAngle;        // angle the player is looking at the sprite
 	uint8_t id;
 	uint16_t distance;
 }; /* = 10 bytes */
