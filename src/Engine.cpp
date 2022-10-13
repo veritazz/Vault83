@@ -881,7 +881,6 @@ static uint8_t blockTextures[WALL_BLOCKS * 4] = {
 
 /*
  * effect ids applied to textures before beeing drawn on the screen
- * maximum effects are 16 each for the texture and the texture index
  *
  * bit[7:4] effect id on the texture index
  * bit[3:0] effect id on the texture data
@@ -4379,7 +4378,7 @@ bitSet(PORTF, 1);
 		/* TODO read effect id from table */
 		uint8_t effect = textureEffects[block_id] & 0xf;
 
-		// remove this for walls
+		// TODO remove this for walls
 		memset(es.texColumn, 0xff, 4);
 
 		if (tile == FOG) {
