@@ -1048,6 +1048,28 @@ static const uint8_t enemyMovementSpeeds [] PROGMEM = {
 	ENEMY3_MOVEMENT_SPEED,
 };
 
+/*
+ * movement speed of projectiles in pixel
+ */
+static const uint8_t projectileMovementSpeeds [] PROGMEM = {
+	PROJECTILE00_MOVEMENT_SPEED,
+	PROJECTILE01_MOVEMENT_SPEED,
+	PROJECTILE02_MOVEMENT_SPEED,
+	PROJECTILE03_MOVEMENT_SPEED,
+	PROJECTILE04_MOVEMENT_SPEED,
+	PROJECTILE05_MOVEMENT_SPEED,
+	PROJECTILE06_MOVEMENT_SPEED,
+	PROJECTILE07_MOVEMENT_SPEED,
+	PROJECTILE08_MOVEMENT_SPEED,
+	PROJECTILE09_MOVEMENT_SPEED,
+	PROJECTILE10_MOVEMENT_SPEED,
+	PROJECTILE11_MOVEMENT_SPEED,
+	PROJECTILE12_MOVEMENT_SPEED,
+	PROJECTILE13_MOVEMENT_SPEED,
+	PROJECTILE14_MOVEMENT_SPEED,
+	PROJECTILE15_MOVEMENT_SPEED,
+};
+
 void Engine::updateSpecialWalls(void)
 {
 	/* update shooting walls */
@@ -3322,7 +3344,8 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 				/* set inactive */
 				cs->flags |= S_INACTIVE;
 			} else {
-				if (moveSprite(cs, 2)) {
+				uint8_t speed = pgm_read_uint8(&projectileMovementSpeeds[SPRITE_TYPE_GET(cs)]);
+				if (moveSprite(cs, speed)) {
 					/* sprite hit some object, mark it inactive */
 					cs->flags |= S_INACTIVE;
 				}

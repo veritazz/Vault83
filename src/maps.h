@@ -93,6 +93,26 @@
 #define ENEMY3_MOVEMENT_SPEED        8
 
 /*----------------------------------------------------------
+ * projectile configuration
+ *----------------------------------------------------------*/
+#define PROJECTILE00_MOVEMENT_SPEED        2
+#define PROJECTILE01_MOVEMENT_SPEED        2
+#define PROJECTILE02_MOVEMENT_SPEED        2
+#define PROJECTILE03_MOVEMENT_SPEED        2
+#define PROJECTILE04_MOVEMENT_SPEED        2
+#define PROJECTILE05_MOVEMENT_SPEED        2
+#define PROJECTILE06_MOVEMENT_SPEED        2
+#define PROJECTILE07_MOVEMENT_SPEED        2
+#define PROJECTILE08_MOVEMENT_SPEED        2
+#define PROJECTILE09_MOVEMENT_SPEED        2
+#define PROJECTILE10_MOVEMENT_SPEED        2
+#define PROJECTILE11_MOVEMENT_SPEED        2
+#define PROJECTILE12_MOVEMENT_SPEED        2
+#define PROJECTILE13_MOVEMENT_SPEED        2
+#define PROJECTILE14_MOVEMENT_SPEED        2
+#define PROJECTILE15_MOVEMENT_SPEED        2
+
+/*----------------------------------------------------------
  * sprite configuration
  *----------------------------------------------------------*/
 #define MAX_VISIBLE_SPRITES    20
