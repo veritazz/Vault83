@@ -3002,8 +3002,8 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 			if (es.fireCountdown == 0 && !SPRITE_IS_PROJECTILE(s)) {
 				/* TODO weapon effective distance */
 
-				/* if player shoots, enemy will attack */
-				SPRITE_STATE_SET(s, ENEMY_ATTACK);
+				/* if player shoots, enemy will follow and eventually attack */
+				SPRITE_STATE_SET(s, ENEMY_FOLLOW);
 
 				/* TODO, maybe just draw some splatter, set frame for hit animation */
 
