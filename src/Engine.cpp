@@ -1485,7 +1485,7 @@ void Engine::update(void)
 		if (actionTile == H_DOOR && arduboy->justPressed(A_BUTTON)) {
 			/* open the door */
 			findAndActivateDoor();
-		} else if (actionTile == TRIGGER) {
+		} else if (actionTile == TRIGGER || actionTile == V_M_W) {
 			/* trigger some event */
 			activateTrigger(blockX, blockY);
 		} else if (es.direction < 3) {

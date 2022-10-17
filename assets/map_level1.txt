@@ -44,11 +44,12 @@ T1    OFF    SWITCH     QUEST        1      14
 T2    OFF    ONESHOT    NEXT_LEVEL   255    14
 T3    OFF    TOUCH      DIALOG       1       1
 
-# Moving Walls (V<id> <damage> <active> <oneshot> <speed> <blockId>)
-V0 no  yes no 4 0
-V1 no  yes no 4 3
-V2 no  yes no 4 2
-V3 yes no  no 4 1
+# Moving Walls
+# V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>
+   V0      no       no       yes       4        0         yes
+   V1      no      yes        no       4        3          no
+   V2      no      yes        no       4        2          no
+   V3     yes       no        no       4        1          no
 
 # Sprites (S<id> <type> <version> <voffset> <health> <flags>)
 S0  I  0  8   0   0

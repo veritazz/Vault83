@@ -225,7 +225,7 @@ mapData = []
 playerX = 0
 playerY = 0
 
-def generate_players_position(hfile, tag, x, y):
+def generate_players_position(tag, x, y):
 	global playerX
 	global playerY
 	playerX = x * blockSize + halfBlockSize
@@ -240,7 +240,7 @@ movingWall = {}
 movingWalls = OrderedDict()
 
 
-def trackTrigger(hfile, tag, x, y):
+def trackTrigger(tag, x, y):
 	global triggerCount
 	global mapTriggers
 
@@ -254,7 +254,7 @@ def trackTrigger(hfile, tag, x, y):
 	# count the number of triggers
 	triggerCount += 1
 
-def trackDoor(hfile, tag, x, y):
+def trackDoor(tag, x, y):
 	global doorCount
 	global mapDoors
 
@@ -264,9 +264,11 @@ def trackDoor(hfile, tag, x, y):
 	# count the number of doors
 	doorCount += 1
 
-def trackMovingWall(hfile, tag, x, y):
+def trackMovingWall(tag, x, y):
 	global movingWall
+	global movingWalls
 	global movingWallID
+	global triggerCount
 
 	if tag == "VS":
 		global movingWallCount
@@ -277,8 +279,13 @@ def trackMovingWall(hfile, tag, x, y):
 		movingWall["map-y"] = y
 		movingWall["id"] = "V%u" % (movingWallID)
 
+		# create a trigger if this is a pushwall
+		objId = movingWalls[movingWall["id"]][2]
+		if objId != None:
+			createTrigger("T%d OFF ONESHOT WALL %d 0" % (triggerCount, objId))
+			trackTrigger(tag, x, y)
+
 	global movingWallTrack
-	global movingWalls
 
 	if movingWallTrack == 1:
 		# end a track
@@ -304,7 +311,7 @@ spriteCount = 0
 mapStaticSprites = OrderedDict()
 staticSpriteCount = 0
 
-def trackStaticSprite(hfile, tag, x, y):
+def trackStaticSprite(tag, x, y):
 	global mapStaticSprites
 	global totalSpriteCount
 	global staticSpriteCount
@@ -319,7 +326,7 @@ def trackStaticSprite(hfile, tag, x, y):
 
 	staticSpriteCount += 1
 
-def trackSprite(hfile, tag, x, y):
+def trackSprite(tag, x, y):
 	global mapSprites
 	global spriteCount
 	global totalSpriteCount
@@ -339,7 +346,7 @@ def trackSprite(hfile, tag, x, y):
 mapSpecialWalls = OrderedDict()
 specialWallCount = 0
 
-def trackSpecialWall(hfile, tag, x, y):
+def trackSpecialWall(tag, x, y):
 	global mapSpecialWalls
 	global specialWallCount
 
@@ -488,9 +495,10 @@ def createDoor(line):
 
 def createMovingWall(line):
 	global movingWalls
-	# Moving Walls (V<id> <damage> <active> <oneshot> <speed> <blockId>)
+	# Moving Walls (V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>)
 	parts = line.split()
 	wallID = parts[0]
+	# assume start position is above end position, so y must increment
 	flags = 1 << 0 #"MW_DIRECTION_INC | "
 	if parts[1].lower() == "yes":
 		flags += 1 << 5 #"VMW_FLAG_DAMAGE | "
@@ -499,7 +507,14 @@ def createMovingWall(line):
 	if parts[3].lower() == "yes":
 		flags += 1 << 7 #"VMW_FLAG_ONESHOT | "
 	flags += int(parts[4]) << 1 # + " << 1"
-	movingWalls[wallID] = [flags, parts[5]]
+
+	# create a trigger if this is a push wall
+	if parts[6].lower() == "yes":
+		# one shot trigger that activates the wall
+		obj_id = int(parts[0][1:], 0)
+		movingWalls[wallID] = [flags, parts[5], obj_id]
+	else:
+		movingWalls[wallID] = [flags, parts[5], None]
 
 totalSpriteTableEntries = 0
 
@@ -774,7 +789,7 @@ if __name__ == "__main__":
 						offset = mapY * mapWidth + mapX
 						try:
 							fn = special_fn[mapData[offset]]
-							fn(hfile, mapData[offset], mapX, mapY)
+							fn(mapData[offset], mapX, mapY)
 						except KeyError:
 							pass
 
