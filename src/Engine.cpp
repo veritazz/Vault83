@@ -1584,12 +1584,6 @@ void Engine::updateMoveables(void)
 		uint8_t speed = (mw->flags >> 1) & 0xf;
 
 		if (mw->flags & MW_DIRECTION_INC) {
-			/* moving down */
-			mw->offset += speed;
-			if (mw->offset == BLOCK_SIZE) {
-				mw->offset = 0;
-				mw->mapY++;
-			}
 			if (mw->mapY == mw->max) {
 				/* change direction */
 				mw->flags &= ~MW_DIRECTION_INC;
@@ -1597,15 +1591,15 @@ void Engine::updateMoveables(void)
 				if (mw->flags & VMW_FLAG_ONESHOT)
 					mw->flags &= ~VMW_FLAG_ACTIVE;
 
+			} else {
+				/* moving down */
+				mw->offset += speed;
+				if (mw->offset == BLOCK_SIZE) {
+					mw->offset = 0;
+					mw->mapY++;
+				}
 			}
 		} else {
-			/* moving up */
-			if (mw->offset == 0) {
-				mw->offset = BLOCK_SIZE;
-				mw->mapY--;
-			}
-
-			mw->offset -= speed;
 			if (mw->mapY == mw->min && mw->offset == 0) {
 				/* change direction */
 				mw->flags |= MW_DIRECTION_INC;
@@ -1613,6 +1607,14 @@ void Engine::updateMoveables(void)
 				if (mw->flags & VMW_FLAG_ONESHOT)
 					mw->flags &= ~VMW_FLAG_ACTIVE;
 
+			} else {
+				/* moving up */
+				if (mw->offset == 0) {
+					mw->offset = BLOCK_SIZE;
+					mw->mapY--;
+				}
+
+				mw->offset -= speed;
 			}
 		}
 		/*
