@@ -286,6 +286,9 @@ def trackMovingWall(hfile, tag, x, y):
 		movingWallID += 1
 		movingWall["max-y"] = y
 		movingWall["flags"] = movingWalls[movingWall["id"]][0]
+		# if start position if below end position, y must start decrementing
+		if movingWall["map-y"] > movingWall["min-y"]:
+			movingWall["flags"] &= ~(1 << 0) #"MW_DIRECTION_DEC | "
 		movingWall["blockid"] = int(movingWalls[movingWall["id"]][1], 0)
 		movingWalls[movingWall["id"]] = dict(movingWall)
 	else:
