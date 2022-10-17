@@ -669,6 +669,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createDoor(line)
 							lines += 1
 						break
@@ -686,6 +688,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createTrigger(line)
 							lines += 1
 						break
@@ -703,6 +707,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createMovingWall(line)
 							lines += 1
 						break
@@ -719,6 +725,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createSprite(line)
 							lines += 1
 						break
@@ -735,6 +743,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createQuest(line)
 							lines += 1
 						break
@@ -752,6 +762,8 @@ if __name__ == "__main__":
 								break;
 							if "none" in line:
 								break
+							if line.startswith('#'):
+								continue
 							createSpecialWall(line)
 							lines += 1
 						break
