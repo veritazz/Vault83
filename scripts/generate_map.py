@@ -324,6 +324,8 @@ def trackStaticSprite(tag, x, y):
 	s["map-y"] = y # * blockSize + halfBlockSize
 	s["id"] = staticSpriteCount
 
+	# TODO based on tag set shootable flag or not
+
 	staticSpriteCount += 1
 
 def trackSprite(tag, x, y):
@@ -954,12 +956,13 @@ if __name__ == "__main__":
 					swfile.write(struct.pack('<B', s["flags"]))
 
 				mapSizeBytes = len(mapData)
-				mapTriggerSizeBytes = len(mapTriggers) * 5
+				mapTriggerSizeBytes = len(mapTriggers) * 6
 				movingWallInitDataSizeBytes = len(list(movingWalls.keys())) * 6
 				doorsInitDataSizeBytes = len(list(mapDoors.keys())) * 3
-				spritesInitDataSizeBytes = len(mapSprites) * 4
+				spritesInitDataSizeBytes = len(mapSprites) * 5
 				questSizeBytes = len(mapQuests) * 18
 				specialWallsSizeBytes = len(mapSpecialWalls) * 3 + 1
+				staticSpritesDataSizeBytes = staticSpriteCount * 1
 
 				sumMapSize = mapSizeBytes
 				sumMapSize += mapTriggerSizeBytes
@@ -968,6 +971,7 @@ if __name__ == "__main__":
 				sumMapSize += spritesInitDataSizeBytes
 				sumMapSize += questSizeBytes
 				sumMapSize += specialWallsSizeBytes
+				sumMapSize += staticSpritesDataSizeBytes
 
 				# TODO count enemies, items
 
@@ -987,7 +991,7 @@ if __name__ == "__main__":
 				tfile.write(" *   memory used for triggers             (bytes): %u\n" % (mapTriggerSizeBytes))
 				tfile.write(" *   memory used for moving walls         (bytes): %u\n" % (movingWallInitDataSizeBytes))
 				tfile.write(" *   memory used for doors                (bytes): %u\n" % (doorsInitDataSizeBytes))
-				tfile.write(" *   memory used for sprites              (bytes): %u\n" % (spritesInitDataSizeBytes))
+				tfile.write(" *   memory used for sprites              (bytes): %u\n" % (spritesInitDataSizeBytes + staticSpritesDataSizeBytes))
 				tfile.write(" *   memory used for quests               (bytes): %u\n" % (questSizeBytes))
 				tfile.write(" *   memory used for special walls       (bytes): %u\n" % (specialWallsSizeBytes))
 				tfile.write(" * ----------------------------------------------------\n")
