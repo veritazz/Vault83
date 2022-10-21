@@ -1,6 +1,8 @@
 # Add terminal screen where the player can read some story
 # [done] Add shooting walls
-# Add trigger to activate push walls for secret places
+# [done] Add trigger to activate push walls for secret places
+# [done] Add trigger invisible by the player to trigger things as the player moves
+# only hold flags/timeout of triggers in RAM, read the rest from flash, RAM optimization
 
 # Add Save/Load game support
 # add menu option for sound on/off, music on/off
