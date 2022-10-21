@@ -418,6 +418,64 @@ void Engine::activateDoor(struct door *d, uint8_t door)
 	}
 }
 
+void Engine::runTriggerAction(uint8_t old_state, struct trigger *t)
+{
+	if (old_state == (t->flags & TRIGGER_FLAG_STATE))
+		return;
+
+	/* play trigger effect */
+	startAudioEffect(AUDIO_EFFECT_ID_MAP, 4);
+
+	uint8_t object = t->flags & TRIGGER_FLAG_OBJ;
+	if (object == TRIGGER_OBJ_DOOR) {
+		/* door */
+		struct door *d = &es.ld.doors[t->obj_id];
+		/* clear trigger flag */
+		d->flags &= ~DOOR_FLAG_TRIGGER;
+		activateDoor(d, t->obj_id);
+		/*
+		 * if the trigger is of type switch, reenable the trigger flag
+		 * of the door, so the player needs to be fast enough to pass
+		 * the door while it is open. Otherwise it closes again and the
+		 * player needs to trigger the switch again
+		 */
+		if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH) {
+			/* set trigger flag */
+			d->flags |= DOOR_FLAG_TRIGGER;
+		}
+	} else if (object == TRIGGER_OBJ_VMW) {
+		/* moving wall */
+		struct movingWall *mw = &es.ld.movingWalls[t->obj_id];
+		/* toggle active flag */
+		mw->flags ^= VMW_FLAG_ACTIVE;
+	} else if (object == TRIGGER_OBJ_DIALOG) {
+		/* set dialog system event */
+		setSystemEvent(EVENT_DIALOG, t->obj_id);
+	} else if (object == TRIGGER_OBJ_QUEST) {
+		/*
+		 * check if player does already has a quest or if
+		 * the new quest is the current quest
+		 */
+		if (activeQuestId == QUEST_NOT_ACTIVE || activeQuestId == t->obj_id) {
+			/* set quest system event for the new quest */
+			setSystemEvent(EVENT_QUEST, t->obj_id);
+		} else {
+			/*
+			 * print message that the player is busy with
+			 * a quest
+			 */
+			setStatusMessage(STATUS_QUEST_PENDING);
+		}
+	} else if (object == TRIGGER_OBJ_NEXT_LEVEL) {
+		/*
+		 * set next level event
+		 *   obj_id  = 0xff: next level from current one
+		 *   obj_id != 0xff: level number given in obj_id
+		 */
+		setSystemEvent(EVENT_PLAYER_NEXT_LEVEL, t->obj_id);
+	}
+}
+
 void Engine::activateTrigger(uint8_t mapX, uint8_t mapY)
 {
 	struct trigger *t = &es.ld.triggers[0];
@@ -446,60 +504,8 @@ void Engine::activateTrigger(uint8_t mapX, uint8_t mapY)
 			}
 
 			/* now activate/deactivate object */
-			if (old_state != (t->flags & TRIGGER_FLAG_STATE)) {
+			runTriggerAction(old_state, t);
 
-				/* play trigger effect */
-				startAudioEffect(AUDIO_EFFECT_ID_MAP, 4);
-
-				uint8_t object = t->flags & TRIGGER_FLAG_OBJ;
-				if (object == TRIGGER_OBJ_DOOR) {
-					/* door */
-					struct door *d = &es.ld.doors[t->obj_id];
-					/* clear trigger flag */
-					d->flags &= ~DOOR_FLAG_TRIGGER;
-					activateDoor(d, t->obj_id);
-					/*
-					 * if the trigger is of type switch, reenable the trigger flag
-					 * of the door, so the player needs to be fast enough to pass
-					 * the door while it is open. Otherwise it closes again and the
-					 * player needs to trigger the switch again
-					 */
-					if ((t->flags & TRIGGER_FLAG_TYPE) == TRIGGER_TYPE_SWITCH) {
-						/* set trigger flag */
-						d->flags |= DOOR_FLAG_TRIGGER;
-					}
-				} else if (object == TRIGGER_OBJ_VMW) {
-					/* moving wall */
-					struct movingWall *mw = &es.ld.movingWalls[t->obj_id];
-					/* toggle active flag */
-					mw->flags ^= VMW_FLAG_ACTIVE;
-				} else if (object == TRIGGER_OBJ_DIALOG) {
-					/* set dialog system event */
-					setSystemEvent(EVENT_DIALOG, t->obj_id);
-				} else if (object == TRIGGER_OBJ_QUEST) {
-					/*
-					 * check if player does already has a quest or if
-					 * the new quest is the current quest
-					 */
-					if (activeQuestId == QUEST_NOT_ACTIVE || activeQuestId == t->obj_id) {
-						/* set quest system event for the new quest */
-						setSystemEvent(EVENT_QUEST, t->obj_id);
-					} else {
-						/*
-						 * print message that the player is busy with
-						 * a quest
-						 */
-						setStatusMessage(STATUS_QUEST_PENDING);
-					}
-				} else if (object == TRIGGER_OBJ_NEXT_LEVEL) {
-					/*
-					 * set next level event
-					 *   obj_id  = 0xff: next level from current one
-					 *   obj_id != 0xff: level number given in obj_id
-					 */
-					setSystemEvent(EVENT_PLAYER_NEXT_LEVEL, t->obj_id);
-				}
-			}
 			break;
 		}
 		t++;
@@ -1504,6 +1510,23 @@ void Engine::update(void)
 			}
 		}
 	}
+
+	uint8_t tile = checkIgnoreBlock(es.ld.playerMapX, es.ld.playerMapY);
+	if (tile == FLOOR_TRIGGER) {
+		struct trigger *t = &es.ld.triggers[MAX_TRIGGERS - 1];
+
+		/* floor triggers are sorted to the end of the triggers array */
+		for (;;) {
+			if (t->mapX == es.ld.playerMapX && t->mapY == es.ld.playerMapY) {
+				/* set state */
+				uint8_t old_state = t->flags & TRIGGER_FLAG_STATE;
+				t->flags |= TRIGGER_STATE_ON;
+				runTriggerAction(old_state, t);
+				break;
+			}
+			t--;
+		}
+	}
 }
 
 void Engine::doDamageForVMW(struct movingWall *mw)
@@ -2201,6 +2224,8 @@ uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
 				break;
 			}
 		}
+	} else if (tile == FLOOR_TRIGGER) {
+		tile = F0;
 	}
 	return tile;
 }
@@ -2282,7 +2307,7 @@ uint8_t Engine::checkSolidBlockCheap(uint8_t mapX, uint8_t mapY)
 	/* reset current moving wall */
 	es.cmw = NULL;
 
-	if (tile >= SPRITES_START)
+	if (tile >= SPRITES_START || tile == FLOOR_TRIGGER)
 		return F0;
 
 	/* check if it is an open door */

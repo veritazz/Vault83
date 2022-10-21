@@ -265,6 +265,7 @@ private:
 	int8_t checkDoor(uint8_t wallX);
 	void findAndActivateDoor(void);
 	void activateDoor(struct door *d, uint8_t door);
+	void runTriggerAction(uint8_t old_state, struct trigger *t);
 	void activateTrigger(uint8_t mapX, uint8_t mapY);
 	void cleanIgnoreBlock(void);
 

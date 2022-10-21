@@ -1,6 +1,6 @@
 ##|T |T |T |##|T |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
 ##|  |  |  |#7|E |  |  |VE|  |VE|  |##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
-#1|  |  |  |D |E |  |  |v |VE|v |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+#1|  |FT|  |D |E |  |  |v |VE|v |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
 ##|  |  |I |#7|E |  |  |v |v |v |  |##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
 ##|#7|D |#7|##|##|##|  |v |v |v |  |##|##|~4|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
 ##|  |  |E |S#|E |  |  |v |v |v |  |  |  |  |  |##|  |##|  |  |  |  |  |##|  |  |  |  |  |  |##
@@ -38,11 +38,17 @@ D0 no  no yes 7
 D1 no  no no  7
 D2 no  no no  7
 
-# Triggers (T<id> <state> <type> <obj type> <obj id> <blockId>)
-T0    OFF    ONESHOT    WALL         3      14
-T1    OFF    SWITCH     QUEST        1      14
-T2    OFF    ONESHOT    NEXT_LEVEL   255    14
-T3    OFF    TOUCH      DIALOG       1       1
+# Triggers
+# oneshot = can be switched on/off once, will not reset after timeout
+# switch  = can be switched on/off, will reset to the opposite state after timeout
+# touch   = can be switched on/off, will reset immediately without timeout
+# floor   = switches on/off when the player moves onto the floor tile, never resets
+# T<id> <state>   <type>      <obj type>   <obj id> <blockId>
+   T0     OFF    ONESHOT          WALL          3      14
+   T1     OFF     SWITCH         QUEST          1      14
+   T2     OFF      FLOOR        DIALOG          1       1
+   T3     OFF    ONESHOT    NEXT_LEVEL        255      14
+   T4     OFF      TOUCH        DIALOG          1       1
 
 # Moving Walls
 # V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>

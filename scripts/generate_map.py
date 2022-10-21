@@ -10,7 +10,7 @@ halfBlockSize = int(blockSize / 2)
 mapWidth = 32
 mapHeight = 32
 
-maxTriggerCount = 5
+maxTriggerCount = 6
 maxMovingWallCount = 5
 maxDoorCount = 5
 maxSpriteCount = 40
@@ -176,6 +176,7 @@ mtranslation = {
 	"S ": 0, #"F0",
 	"E ": 0, #"F0",
 	"I ": 0, #"F0",
+	"FT": 0x47, #"FLOOR_TRIGGER",
 }
 
 def save_binary_data(f_data, f, padding=True):
@@ -364,6 +365,7 @@ special_fn = {
 	"P ": generate_players_position,
 	"D ": trackDoor,
 	"T ": trackTrigger,
+	"FT": trackTrigger,
 	"VS": trackMovingWall,
 	"VE": trackMovingWall,
 	"S ": trackStaticSprite,
@@ -461,6 +463,7 @@ triggerStates = {
 	"oneshot"     : 0 << 1, #"TRIGGER_TYPE_ONE_SHOT ",
 	"switch"      : 1 << 1, #"TRIGGER_TYPE_SWITCH   ",
 	"touch"       : 2 << 1, #"TRIGGER_TYPE_TOUCH    ",
+	"floor"       : 3 << 1, #"TRIGGER_TYPE_FLOOR    ",
 	"door"        : 0 << 3, #"TRIGGER_OBJ_DOOR      ",
 	"wall"        : 1 << 3, #"TRIGGER_OBJ_VMW       ",
 	"dialog"      : 2 << 3, #"TRIGGER_OBJ_DIALOG    ",
@@ -476,7 +479,7 @@ def createTrigger(line):
 	flags += triggerStates[parts[2].lower()]
 	flags += triggerStates[parts[3].lower()]
 
-	mapTriggers[parts[0]] = dict({"flags": flags, "obj-id": int(parts[4], 0), "blockid": int(parts[5], 0)})
+	mapTriggers[parts[0]] = dict({"flags": flags, "obj-id": int(parts[4], 0), "blockid": int(parts[5], 0), "order": triggerStates[parts[2].lower()]})
 
 mapDoors = OrderedDict()
 
@@ -801,14 +804,17 @@ if __name__ == "__main__":
 				#
 				# write triggers init data
 				#
-				for tk in list(mapTriggers.keys()):
-					t = mapTriggers[tk]
+				# sort mapTriggers first so floor triggers are at the end
+				sortedMapTriggers = dict(sorted(mapTriggers.items(), key=lambda item: item[1]["order"]))
+				print(sortedMapTriggers)
+				for tk in list(sortedMapTriggers.keys()):
+					t = sortedMapTriggers[tk]
 					bfile.write(struct.pack('<B', t["flags"]))
 					bfile.write(struct.pack('<B', t["obj-id"]))
 					bfile.write(struct.pack('<B', t["x"]))
 					bfile.write(struct.pack('<B', t["y"]))
 					bfile.write(struct.pack('<B', t["blockid"]))
-					bfile.write('\0'.encode('utf-8'))  # pad
+					bfile.write('\0'.encode('utf-8'))  # pad for timeout field
 
 				if triggerCount > maxTriggerCount:
 					print(("Error: Map " + map_filename + " has too many triggers\n"))

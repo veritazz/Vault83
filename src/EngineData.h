@@ -136,6 +136,7 @@ struct trigger {
 	 * bit [1:2]: type: 0 = one shot (goes either ON or OFF and remains in this state)
 	 *                  1 = switch (goes ON/OFF and resets after timeout)
 	 *                  2 = touch (goes ON and immediately OFF, no timeout)
+	 *                  3 = floor (goes ON/OFF when player steps onto or leaves it, no timeout)
 	 * bit [3:5]: type of obj_id
 	 *            0 = door
 	 *            1 = moving wall

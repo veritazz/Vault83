@@ -55,6 +55,7 @@
 #define SHOOTING_WALL_D      0x45            /* wall that can shoot (down) */
 
 #define V_DOOR               0x46            /* vertical door, only used internally, do not use in maps */
+#define FLOOR_TRIGGER        0x47            /* triggers when player walks onto it */
 
 /*
  * fixed sprites
@@ -207,6 +208,7 @@
 #define TRIGGER_TYPE_ONE_SHOT (0 << 1)
 #define TRIGGER_TYPE_SWITCH   (1 << 1)
 #define TRIGGER_TYPE_TOUCH    (2 << 1)
+#define TRIGGER_TYPE_FLOOR    (3 << 1)
 
 #define TRIGGER_FLAG_OBJ        (0x7 << 3)
 #define TRIGGER_OBJ_DOOR        (0x0 << 3)
