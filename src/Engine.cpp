@@ -760,11 +760,16 @@ uint8_t Engine::enemyStateFollow(struct current_sprite *cs, uint8_t speed)
 	/* TODO should use a per enemy type attack distance */
 	if (cs->distance < 96) {
 		state = ENEMY_ATTACK;
-	} else if (cs->distance > 384) {
+	} else if (cs->distance > 270) {
 		state = ENEMY_RANDOM_MOVE;
 	} else {
 		enemyTurnToPlayer(cs);
 
+		uint8_t twist = rand() % 16;
+		if (twist & 1)
+			cs->viewAngle += twist;
+		else
+			cs->viewAngle -= twist;
 		moveSprite(cs, speed);
 
 		/* only the player will take damage */
@@ -782,9 +787,9 @@ uint8_t Engine::enemyStateRandomMove(struct current_sprite *cs, uint8_t speed)
 	} else {
 		moveSprite(cs, speed);
 
-		/* ca. every 4 frames turn 180 degrees */
+		/* ca. every 4 frames turn random degrees */
 		if ((es.frame % FPS) == 0) {
-			cs->viewAngle += 90;
+			cs->viewAngle += rand();
 			if (cs->viewAngle >= 360)
 				cs->viewAngle -= 360;
 		}
