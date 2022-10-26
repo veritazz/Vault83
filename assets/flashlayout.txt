@@ -81,8 +81,8 @@ wall8x8.bin, wall8x8.txt, pad 192
 #
 # dialog data
 #
-dialogs,,pad
 quests,,pad
+dialogs,,pad
 dialog-00.bin,dialog-00.txt, pad 1024
 dialog-01.bin,dialog-01.txt, pad 1024
 #
