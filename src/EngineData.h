@@ -159,7 +159,7 @@ struct level_initdata {
 	struct door doors[MAX_DOORS]; /* list of doors on the map */
 	struct sprite dynamic_sprites[TOTAL_SPRITES]; /* total number of dynamic sprites */
 	uint8_t dynamic_sprite_flags[MAX_SPRITES]; /* flags for sprites that have modifyable parameters, e.g. health */
-	uint8_t static_sprites[MAX_STATIC_SPRITES];
+	uint8_t static_sprites[MAX_STATIC_SPRITES]; /* static sprite flags */
 
 	uint8_t nr_of_sprites;              /* number of non static sprites */
 	uint8_t maxSpecialWalls;            /* number of special walls */
@@ -278,6 +278,11 @@ struct engineState {
 	 * misc
 	 */
 	uint8_t killedBySprite;      /* id of the sprite + 1 that killed the player */
+
+	/*
+	 * timeout in seconds when a sprite can respawn
+	 */
+	uint8_t spriteRespawnTimeout;
 
 	/*
 	 * level init data

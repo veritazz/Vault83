@@ -158,6 +158,8 @@ void Engine::init(void)
 	/* by default no quest is active */
 	activeQuestId = QUEST_NOT_ACTIVE;
 
+	es.spriteRespawnTimeout = SPRITE_RESPAWN_TIMEOUT;
+
 	/* initial setup */
 	update();
 }
@@ -1531,6 +1533,39 @@ void Engine::update(void)
 			}
 			t--;
 		}
+	}
+
+	/* handle sprite respawn */
+	/*
+	 * clip es.randomNumber to nr_of_sprites
+	 * if sprite is inactive, restore health/flags, stop
+	 */
+	if (es.spriteRespawnTimeout == 0) {
+		uint8_t sprite_id = es.randomNumber < es.ld.nr_of_sprites? es.randomNumber: es.ld.nr_of_sprites - 1;
+		struct sprite *s = &es.ld.dynamic_sprites[sprite_id];
+		if (IS_INACTIVE(s->flags)) {
+			/* calculate position of leveldata in flash */
+			uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * currentLevel);
+
+			/* reload positon and flags */
+			FX::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT) + offsetof(struct level_initdata, dynamic_sprites) + (sizeof(struct sprite) * sprite_id),
+					  (uint8_t *)s,
+					  (size_t)sizeof(struct sprite));
+			/* reload health */
+			FX::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT) + offsetof(struct level_initdata, dynamic_sprite_flags) + sprite_id,
+					  (uint8_t *)&es.ld.dynamic_sprite_flags[sprite_id],
+					  (size_t)1);
+
+			es.spriteRespawnTimeout = SPRITE_RESPAWN_TIMEOUT;
+		} else {
+			/* try again next second */
+			es.spriteRespawnTimeout++;
+		}
+	}
+
+	/* update timer based on seconds */
+	if ((es.frame % FPS) == 0) {
+		es.spriteRespawnTimeout--;
 	}
 }
 

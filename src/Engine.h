@@ -181,7 +181,8 @@ struct audio_effect {
 	uint8_t data:6;
 };
 
-#define SHOOTING_WALL_COOLDOWN              FPS * 1 /* 3 seconds */
+#define SHOOTING_WALL_COOLDOWN              FPS * 1 /* 1 seconds */
+#define SPRITE_RESPAWN_TIMEOUT              30      /* in seconds */
 
 class Engine
 {
