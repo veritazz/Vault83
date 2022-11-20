@@ -4459,7 +4459,7 @@ bitSet(PORTF, 1);
 		memset(es.texColumn, 0xff, 4);
 
 		if (tile == FOG) {
-			memset(&es.texColumn[4], 0xff, 4);
+			memset(&es.texColumn[4], 0x00, 4);
 		} else {
 			/* load texture (flash access) */
 			if (effect == 0)
