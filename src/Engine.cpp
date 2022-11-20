@@ -749,6 +749,9 @@ uint8_t Engine::enemyStateAttack(struct current_sprite *cs, uint8_t speed)
 					if (es.playerHealth == 0)
 						es.killedBySprite = cs->id + 1;
 				}
+			} else {
+				/* if attack level not yet reached or got lower, randomly move */
+				state = ENEMY_RANDOM_MOVE;
 			}
 		}
 	}
@@ -1400,9 +1403,9 @@ void Engine::update(void)
 	/*
 	 * update attack counters
 	 */
+	attackLevel += es.randomNumber;
 	if (attackCoolDown == 0) {
 		attackCoolDown = FPS;
-		attackLevel += es.randomNumber;
 	} else {
 		attackCoolDown--;
 	}
