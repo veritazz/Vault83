@@ -285,10 +285,10 @@ drawAll:
 	;
 	brbs 6, 3f
 	set
-	push r31
-	movw r30, r10
-	std Z+2, r24
-	pop r31
+;	push r31
+;	movw r30, r10
+;	std Z+2, r24
+;	pop r31
 3:
 	;
 	; remember last screenY (nscreenY + 1)
@@ -348,8 +348,8 @@ drawAll:
 	or r30, r19           ; *buffer++ | v
 	st X, r30             ; ...
 
-	movw r30, r10
-	std Z+3, r9
+;	movw r30, r10
+;	std Z+3, r9
 
 	pop r29
 	pop r28
@@ -396,8 +396,8 @@ drawTextureColumnScaleUp2:
 	push r17
 	push r28
 	push r29
-	push r18
-	push r19
+;	push r18
+;	push r19
 
 	clt                ; (1) clear T flag
 
@@ -514,6 +514,7 @@ _screenY_positive:
 	;
 	;--------------------------------
 _drawing_loop:
+; TODO once?
 	cpse r25, r1     ; (1/2) check if pixels to skip
 	rjmp _skip       ; (2) jump to skip code
 
@@ -527,11 +528,11 @@ _drawing_loop:
 	;
 	brbs 6, _first_pixel_drawn
 	set
-	pop r30
-	pop r31
-	std Z+2, r14
-	push r30
-	push r31
+;	pop r30
+;	pop r31
+;	std Z+2, r14
+;	push r30
+;	push r31
 _first_pixel_drawn:
 	;
 	; remember last screenY (nscreenY + tmp_px)
@@ -752,9 +753,9 @@ _draw_loop_next_texel:
 ; hack
 	ldi r24, 0
 
-	pop r30
-	pop r31
-	std Z+3, r23
+	;pop r30
+	;pop r31
+	;std Z+3, r23
 1:
 
 	; TODO pop
