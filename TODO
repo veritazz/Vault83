@@ -2,15 +2,15 @@
 # [done] Add shooting walls
 # [done] Add trigger to activate push walls for secret places
 # [done] Add trigger invisible by the player to trigger things as the player moves
-# only hold flags/timeout of triggers in RAM, read the rest from flash, RAM optimization
 
 # Add Save/Load game support
 # add menu option for sound on/off, music on/off
 
 # Add teleporter?
-# [no] Add sector based sprite handling?
-# Add sprite respawn
+# [done] Add sprite respawn
+# [done] Make sprite move from time to time when attacking
 # Fix stencil buffer
+# Show different frames when sprite moves/attacks/dies/respawns
 
 # issues
 - check if FX::readEnd() is really required at all places (maybe deselect is enough just before display update)
