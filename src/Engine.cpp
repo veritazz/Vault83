@@ -871,7 +871,7 @@ static const uint8_t xlateBlockHitToSide[] = {1, 0, 1, 2, 3, 2, 3, 0};
 static uint8_t blockTextures[WALL_BLOCKS * 4] = {
 	 11,  11,  11,  11, // W0
 	  1,   1,   1,   1, // W1
-	  5,   6,   6,   0, // W2
+	  7,   6,   6,   0, // W2
 	  0,   0,   0,   0, // W3
 	  0,   0,   0,   0, // W4
 	  0,   0,   0,   0, // W5
@@ -1808,7 +1808,7 @@ uint16_t Engine::arc_u16(uint16_t value, const uint16_t *table, uint8_t tsize)
 	return previous_index;
 }
 
-uint8_t Engine::movingWallCheckHit(uint8_t mapX, uint16_t a)
+uint8_t Engine::movingWallCheckHitHorizontal(uint8_t mapX, uint16_t a)
 {
 	uint8_t hit = 0;
 	uint16_t b = 0;
@@ -1905,9 +1905,10 @@ uint8_t Engine::movingWallCheckHit(uint8_t mapX, uint16_t a)
 }
 
 /*
- * execute dedicated renderer for special objects like e.g. moving walls
+ * execute dedicated renderer for special objects like e.g. moving walls and
+ * calculate horizontal intersections with them
  */
-uint8_t Engine::checkIgnoreBlockInner(uint8_t pMapX, uint8_t pMapY, uint8_t run)
+uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, uint8_t run)
 {
 	if (run)
 		return F0;
@@ -1970,163 +1971,29 @@ uint8_t Engine::checkIgnoreBlockInner(uint8_t pMapX, uint8_t pMapY, uint8_t run)
 		return F0;
 
 	/* check if ray hits the wall */
-	int16_t mX = mw->mapX * BLOCK_SIZE;
 	uint16_t mY = (mw->mapY + mYinc) * BLOCK_SIZE;
-	uint8_t a, b;
-	uint16_t A, B;
-
-	/* the wall found is the current moving wall */
-	es.cmw = mw;
+	uint16_t a;
 
 	if (mYinc) {
 		/*
 		 * ================ block 2 ==============
 		 */
 		a = es.ld.playerY - mY - mw->offset + 1;
-
-		if (rayAngle < 270)
-			B = es.ld.playerX - mX;
-		else
-			B = mX + BLOCK_SIZE - es.ld.playerX;
-
-		A = divU24ByBlocksize((uint32_t)B * pgm_tanByX(es.tempRayAngle));
-
-		/* check if we still hit the block */
-		if (A < a) {
-			/* miss */
-			return F0;
-		}
-
-		if (es.tempRayAngle != 90) // tan = a / b
-			b = divU24ByBlocksize((uint32_t)a * pgm_tanByX(es.nTempRayAngle));
-		else
-			b = 0;
-
-		/*
-		 * TODO
-		 *
-		 * split triangle into two so we can use multiplication
-		 * with cosinus for the raylength calculation
-		 *
-		 * use local copy of wallX?
-		 */
-		es.renderRayLength = ((uint16_t)a * COSBYX) / pgm_cosByX(es.nTempRayAngle);
-
-		/* block 2 */
-		if (rayAngle < 270) {
-			/*
-			 * (mX, mY + BLOCK_SIZE)
-			 *    +-----------------------+
-			 *    |                       |
-			 *    |\                      |
-			 *    | \                     |
-			 *    |  \  (wallX)           |
-			 *    +...+~~~~~~~~~~~~~~~~~~~+ (offset)
-			 *  A |   |\                  |
-			 *    |   | \                 |
-			 *    | a |  \ c (raylength)  |
-			 *    |   |   \               |
-			 *    |   |    \              |
-			 *    |===+=====+ P(x, y)     |
-			 *    |   B  b                |
-			 *    +-----------------------+
-			 */
-			es.wallX = es.ld.playerX - mX - b;
-		} else {
-			/*
-			 * (mX, mY + BLOCK_SIZE)
-			 *    +-----------------------+
-			 *    |                       |
-			 *    |                      /|
-			 *    |                     / |
-			 *    |           (wallX)  /  |
-			 *    +...................+~~~+ (offset)
-			 *    |                  /|   | A
-			 *    |                 / |   |
-			 *    |  c (raylength) /  | a |
-			 *    |               /   |   |
-			 *    |              /    |   |
-			 *    |     P(x, y) +=====+===|
-			 *    |                b  B   |
-			 *    +-----------------------+
-			 */
-			es.wallX = es.ld.playerX - mX + b;
-		}
 	} else {
 		/*
 		 * ================ block 1 ==============
 		 */
 		a = mY + mw->offset - es.ld.playerY;
-
-		if (rayAngle > 90)
-			B = es.ld.playerX - mX;
-		else
-			B = mX + BLOCK_SIZE - es.ld.playerX;
-
-		A = divU24ByBlocksize((uint32_t)B * pgm_tanByX(es.tempRayAngle));
-
-		/* check if we still hit the block */
-		if (A < a) {
-			/* miss */
-			return F0;
-		}
-
-		if (es.tempRayAngle != 90) // tan = b / a
-			b = divU24ByBlocksize((uint32_t)a * pgm_tanByX(es.nTempRayAngle));
-		else
-			b = 0;
-
-		/*
-		 * TODO
-		 *
-		 * split triangle into two so we can use multiplication
-		 * with cosinus for the raylength calculation
-		 */
-		es.renderRayLength = ((uint16_t)a * COSBYX) / pgm_cosByX(es.nTempRayAngle);
-
-		/* block 1 */
-		if (rayAngle > 90) {
-			/*
-			 * (mX, mY)
-			 *    +-----------------------+
-			 *    |   P(x, y)             |
-			 *    |        +              |
-			 *    |       /|              |
-			 *    |    c / |              |
-			 *    |     /  | a            |
-			 *    | wx /   |              |
-			 *    +...+====+~~~~~~~~~~~~~~+ (offset)
-			 *    |  /   b | A            |
-			 *    | /      |              |
-			 *    |/       |              |
-			 *    +========+              |
-			 *    |    B                  |
-			 *    +-----------------------+
-			 */
-			es.wallX = es.ld.playerX - mX - b;
-		} else {
-			/*
-			 * (mX, mY)
-			 *    +-----------------------+
-			 *    |         P(x, y)       |
-			 *    |              +        |
-			 *    |              |\       |
-			 *    |              | \ c    |
-			 *    |            a |  \     |
-			 *    |       wx     |   \    |
-			 *    +..............+....+~~~| (offset)
-			 *    |            A | b   \  |
-			 *    |              |      \ |
-			 *    |              |       \|
-			 *    |              +========+
-			 *    |                  B    |
-			 *    +-----------------------+
-			 */
-			es.wallX = es.ld.playerX - mX + b;
-		}
 	}
 
-	return V_M_W;
+	if (movingWallCheckHitHorizontal(mw->mapX, a)) {
+		/* the wall found is the current moving wall */
+		es.cmw = mw;
+		return V_M_W;
+	}
+
+	/* ray missed the wall */
+	return F0;
 }
 
 uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, uint16_t hY)
@@ -2192,7 +2059,7 @@ uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, ui
 				if (hY <= offset) {
 					uint16_t a = mY - es.ld.playerY + mw->offset;
 					/* calc */
-					if (movingWallCheckHit(mapX, a)) {
+					if (movingWallCheckHitHorizontal(mapX, a)) {
 						tile = V_M_W;
 					}
 				} else {
@@ -2207,7 +2074,7 @@ uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, ui
 				if (hY >= offset) {
 					uint16_t a = es.ld.playerY - mY - mw->offset + 1;
 					/* calc */
-					if (movingWallCheckHit(mapX, a)) {
+					if (movingWallCheckHitHorizontal(mapX, a)) {
 						tile = V_M_W;
 					}
 				} else {
@@ -2228,9 +2095,13 @@ uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, ui
 	}
 	if (tile != F0) {
 		/* hit */
-		/* TODO this is quite messy */
 		if (es.wallX == -1) {
-			/* TODO ((hY + 1) % BLOCK_SIZE == 0 means this is a horizontal hit */
+			/*
+			 * calculate wallX for all hits not done via
+			 * movingWallCheckHitHorizontal. If hY is on a block boundary and
+			 * the moving wall offset is also at a block boundary then the wallX
+			 * must be derived from hX instead of hY.
+			 */
 			if ((mw->offset == 0) && ((hY + 1) % BLOCK_SIZE == 0)) {
 				es.wallX = hX % BLOCK_SIZE;
 			} else {
@@ -2726,14 +2597,6 @@ uint8_t Engine::move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_
 
 		if (checkSolidBlockCheap(cMapX, cMapY) == F0)
 			continue;
-
-		/*
-		 * TODO
-		 *   could handle door frames as well so the level is more interesting,
-		 *   for this also the rendering algorithm must be extended for half sized
-		 *   blocks (checkIgnoreBlockInner)
-		 */
-
 
 		/*
 		 *  if moving wall, properly add the offset
@@ -3901,9 +3764,9 @@ void Engine::render(void)
 				 * case for e.g. moving walls which needs a dedicated renderer
 				 * when the player is close to them.
 				 */
-				hTile = checkIgnoreBlockInner(es.ld.playerMapX, es.ld.playerMapY, run);
+				hTile = checkIgnoreBlockInnerHorizontal(es.ld.playerMapX, es.ld.playerMapY, run);
 				if (hTile != F0) {
-					hRayLength = 1;
+					hRayLength = es.renderRayLength;
 					goto horizontal_intersection_done2;
 				}
 
@@ -3929,13 +3792,9 @@ void Engine::render(void)
 					hBlockX = divU16ByBlocksize(hX);
 				}
 
-horizontal_intersection_done2:
 				hY = hBlockY * BLOCK_SIZE;
 				if (hStepY < 0)
 					hY += BLOCK_SIZE - 1;
-
-				/* take whatever was calculated (or not) from the block functions */
-				hWallX = es.wallX;
 
 				/*
 				 * INFO: theoretically we should check for hTile != 0 but
@@ -3955,6 +3814,10 @@ horizontal_intersection_done2:
 
 				/* use fine cosinus table to increase precision */
 				hRayLength  = ((uint32_t)diffY * cosAngle + (uint32_t)diffX * cosAngle2 + (FINE_BY_X / 2)) / FINE_BY_X;
+
+horizontal_intersection_done2:
+				/* take whatever was calculated (or not) from the block functions */
+				hWallX = es.wallX;
 
 				if (hTile & HALF_BLOCKS_START) {
 					/*

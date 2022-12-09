@@ -262,7 +262,7 @@ private:
 #endif
 	uint8_t checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, uint16_t hY);
 	uint8_t checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY);
-	uint8_t checkIgnoreBlockInner(uint8_t pMapX, uint8_t pMapY, uint8_t run);
+	uint8_t checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, uint8_t run);
 	int8_t checkDoor(uint8_t wallX);
 	void findAndActivateDoor(void);
 	void activateDoor(struct door *d, uint8_t door);
@@ -282,7 +282,7 @@ private:
 	void ultraDraw(unsigned char *buffer, uint8_t drawCase);
 	void drawNoTexture(int16_t screenY, uint16_t wallHeight, struct renderInfo *re);
 
-	uint8_t movingWallCheckHit(uint8_t mapX, uint16_t a);
+	uint8_t movingWallCheckHitHorizontal(uint8_t mapX, uint16_t a);
 
 	void doDamageForVMW(struct movingWall *mw);
 	uint8_t movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct movingWall *mw, uint8_t flags);
