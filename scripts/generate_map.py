@@ -169,9 +169,11 @@ mtranslation = {
 	# other
 	"T ": 64, #"TRIGGER",
 	"D ": 63, #"H_DOOR",
-	"VS": 65, #"V_M_W",
-	"v ": 65, #"V_M_W",
-	"VE": 65, #"V_M_W",
+	"VS": 0x41, #"V_M_W",
+	"v ": 0x41, #"V_M_W",
+	"VE": 0x41, #"V_M_W",
+	"HS": 0x41, #"V_M_W",
+	"HE": 0x41, #"V_M_W",
 	"P ": 0, #"F0",
 	"S ": 0, #"F0",
 	"E ": 0, #"F0",
@@ -238,6 +240,7 @@ movingWallCount = 0
 movingWallTrack = 0
 movingWallID = 0
 movingWall = {}
+hMovingWall = {}
 movingWalls = OrderedDict()
 
 
@@ -265,6 +268,7 @@ def trackDoor(tag, x, y):
 	# count the number of doors
 	doorCount += 1
 
+# called for VS and VE
 def trackMovingWall(tag, x, y):
 	global movingWall
 	global movingWalls
@@ -294,7 +298,7 @@ def trackMovingWall(tag, x, y):
 		movingWallID += 1
 		movingWall["max-y"] = y
 		movingWall["flags"] = movingWalls[movingWall["id"]][0]
-		# if start position if below end position, y must start decrementing
+		# if start position is below end position, y must start decrementing
 		if movingWall["map-y"] > movingWall["min-y"]:
 			movingWall["flags"] &= ~(1 << 0) #"MW_DIRECTION_DEC | "
 		movingWall["blockid"] = int(movingWalls[movingWall["id"]][1], 0)
@@ -302,6 +306,48 @@ def trackMovingWall(tag, x, y):
 	else:
 		# start a track
 		movingWall["min-y"] = y
+		movingWallTrack = 1
+
+# called for HS and HE
+def trackHorizontalMovingWall(tag, x, y):
+	global hMovingWall
+	global movingWalls
+	global movingWallID
+	global triggerCount
+
+	if tag == "HS":
+		global movingWallCount
+		# count the wall for statistics
+		movingWallCount += 1
+
+		hMovingWall["map-x"] = x
+		hMovingWall["map-y"] = y
+		hMovingWall["id"] = "H%u" % (movingWallID)
+
+		# create a trigger if this is a pushwall
+		objId = movingWalls[hMovingWall["id"]][2]
+		if objId != None:
+			createTrigger("T%d OFF ONESHOT WALL %d 0" % (triggerCount, objId))
+			trackTrigger(tag, x, y)
+
+	global movingWallTrack
+
+	if movingWallTrack == 1:
+		# end a track
+		movingWallTrack = 0
+		movingWallID += 1
+		hMovingWall["max-y"] = x
+		hMovingWall["flags"] = movingWalls[hMovingWall["id"]][0]
+
+		# if start position is after end position, x must start decrementing
+		if hMovingWall["map-x"] > hMovingWall["min-y"]:
+			hMovingWall["flags"] &= ~(1 << 0) #"MW_DIRECTION_DEC | "
+
+		hMovingWall["blockid"] = int(movingWalls[hMovingWall["id"]][1], 0)
+		movingWalls[hMovingWall["id"]] = dict(hMovingWall)
+	else:
+		# start a track
+		hMovingWall["min-y"] = x
 		movingWallTrack = 1
 
 totalSpriteCount = 0
@@ -361,7 +407,8 @@ def trackSpecialWall(tag, x, y):
 	s["map-y"] = y
 	mapSpecialWalls[specialWallName] = s
 
-special_fn = {
+# functions that are executed during vertical scan of the map
+vertical_special_fn = {
 	"P ": generate_players_position,
 	"D ": trackDoor,
 	"T ": trackTrigger,
@@ -435,6 +482,12 @@ special_fn = {
 	"sr": trackSpecialWall,
 	"ss": trackSpecialWall,
 	"st": trackSpecialWall,
+}
+
+# functions that are executed during horizontal scan of the map
+horizontal_special_fn = {
+	"HS": trackHorizontalMovingWall,
+	"HE": trackHorizontalMovingWall,
 }
 
 def print_map_tile_comment(f_data, f):
@@ -511,7 +564,11 @@ def createMovingWall(line):
 		flags += 1 << 6 #"VMW_FLAG_ACTIVE | "
 	if parts[3].lower() == "yes":
 		flags += 1 << 7 #"VMW_FLAG_ONESHOT | "
+	# set speed
 	flags += int(parts[4]) << 1 # + " << 1"
+	# set type
+	if wallID.startswith("H"):
+		flags += 1 << 3   # set type flag to 1 if horizontal wall
 
 	# create a trigger if this is a push wall
 	if parts[6].lower() == "yes":
@@ -650,6 +707,7 @@ if __name__ == "__main__":
 			movingWallTrack = 0
 			movingWallID = 0
 			movingWall = {}
+			hMovingWall = {}
 			movingWalls = OrderedDict()
 			mapSprites = OrderedDict()
 			mapStaticSprites = OrderedDict()
@@ -788,12 +846,23 @@ if __name__ == "__main__":
 							lines += 1
 						break
 
-				# walk the whole map and try to execute any special function
+				# walk the whole map columnwise and try to execute any special function
 				for mapX in range(mapWidth):
 					for mapY in range(mapHeight):
 						offset = mapY * mapWidth + mapX
 						try:
-							fn = special_fn[mapData[offset]]
+							fn = vertical_special_fn[mapData[offset]]
+							fn(mapData[offset], mapX, mapY)
+						except KeyError:
+							pass
+
+				# walk the whole map rowwise and try to execute any special function
+				movingWallID = 0     # reset this as it is needed for horizontal wall tracking
+				for mapY in range(mapHeight):
+					for mapX in range(mapWidth):
+						offset = mapY * mapWidth + mapX
+						try:
+							fn = horizontal_special_fn[mapData[offset]]
 							fn(mapData[offset], mapX, mapY)
 						except KeyError:
 							pass
@@ -806,7 +875,6 @@ if __name__ == "__main__":
 				#
 				# sort mapTriggers first so floor triggers are at the end
 				sortedMapTriggers = dict(sorted(mapTriggers.items(), key=lambda item: item[1]["order"]))
-				print(sortedMapTriggers)
 				for tk in list(sortedMapTriggers.keys()):
 					t = sortedMapTriggers[tk]
 					bfile.write(struct.pack('<B', t["flags"]))
