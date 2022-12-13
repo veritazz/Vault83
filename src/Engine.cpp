@@ -1634,6 +1634,10 @@ uint8_t Engine::movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct m
 	return ret;
 }
 
+static const uint8_t movingWallSpeedXlate[4] PROGMEM = {
+	1, 2, 4, 8,
+};
+
 void Engine::updateMoveables(void)
 {
 	/*
@@ -1647,7 +1651,9 @@ void Engine::updateMoveables(void)
 		if ((flags & VMW_FLAG_ACTIVE) == 0)
 			continue;
 
-		uint8_t speed = (mw->flags >> 1) & 0xf;
+		uint8_t speed = (mw->flags >> 1) & 0x3;
+		/* translate speed value */
+		speed = pgm_read_uint8(&movingWallSpeedXlate[speed]);
 
 		if (mw->flags & MW_DIRECTION_INC) {
 			if (mw->mapY == mw->max) {

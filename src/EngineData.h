@@ -116,7 +116,9 @@ struct door {
 struct movingWall {
 	/*
 	 * bit     0: direction
-	 * bit [1:4]: speed (only 1,2,4,8)
+	 * bit [1:2]: speed (translated to 1,2,4,8)
+	 * bit     3: type, 0 = vertical, 1 = horizontal
+	 * bit     4: unused
 	 * bit     5: if set, does damage
 	 * bit     6: if set, does move
 	 * bit     7: if set, wall will only move once in the current direction
