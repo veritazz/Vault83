@@ -56,6 +56,9 @@
 
 #define V_DOOR               0x46            /* vertical door, only used internally, do not use in maps */
 #define FLOOR_TRIGGER        0x47            /* triggers when player walks onto it */
+#define H_M_W                0x48            /* horizontal moving wall block */
+#define V_M_W_H              0x49            /* intermediate value for a vertical moving wall hit horizontally */
+#define H_M_W_V              0x50            /* intermediate value for a horizontal moving wall hit vertically */
 
 /*
  * fixed sprites

@@ -1584,7 +1584,7 @@ void Engine::doDamageForVMW(struct movingWall *mw)
  * return 1, sprite was pushed back
  * return 2, sprite was pushed into a wall
  */
-uint8_t Engine::movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct movingWall *mw, uint8_t flags)
+uint8_t Engine::movingWallPushBack(uint16_t *playerX, uint16_t *playerY, struct movingWall *mw, uint8_t flags)
 {
 	uint8_t ret = 0;
 	uint16_t xs, ys, xe, ye;
@@ -1596,44 +1596,82 @@ uint8_t Engine::movingWallPushBack(uint16_t playerX, uint16_t *playerY, struct m
 	 * the min distance can be reached (e.g. the texture is suddenly closer)
 	 */
 
-	xs = mw->mapX * BLOCK_SIZE;
+	/* add offset to x if it is a horizontally moving wall */
+	if ((mw->flags & (1 << 3)) != 0)
+		xs = mw->mapX * BLOCK_SIZE + mw->offset;
+	else
+		xs = mw->mapX * BLOCK_SIZE;
+
 	xe = xs + BLOCK_SIZE + minWallDistance;
 	if (xs < minWallDistance)
 		xs = 0;
 	else
 		xs -= minWallDistance;
 
-	ys = mw->mapY * BLOCK_SIZE + mw->offset;
+	/* add offset to y if it is a vertically moving wall */
+	if ((mw->flags & (1 << 3)) == 0)
+		ys = mw->mapY * BLOCK_SIZE + mw->offset;
+	else
+		ys = mw->mapY * BLOCK_SIZE;
+
 	ye = ys + BLOCK_SIZE + minWallDistance;
 	if (ys < minWallDistance)
 		ys = 0;
 	else
 		ys -= minWallDistance;
 
-	if (playerX > xs && playerX < xe && *playerY > ys && *playerY < ye) {
+	if (*playerX > xs && *playerX < xe && *playerY > ys && *playerY < ye) {
 
 		/* inside */
-		uint16_t movingAngle = flags & MW_DIRECTION_INC? 90: 270;
-		uint16_t nPlayerY;
-		uint8_t diffy;
+		uint16_t movingAngle;
+		uint16_t nPlayerXY;
+		uint8_t diffxy;
 
-		if (movingAngle == 90) {
-			diffy = ye - *playerY;
-			nPlayerY = *playerY + diffy;
+		if (flags & (1 << 3)) {
+			/* moving angles for horizontally moving walls */
+			movingAngle = flags & MW_DIRECTION_INC? 0: 180;
 		} else {
-			diffy = *playerY - ys;
-			nPlayerY = *playerY - diffy;
+			/* moving angles for vertically moving walls */
+			movingAngle = flags & MW_DIRECTION_INC? 90: 270;
 		}
 
-		ret = move(movingAngle, 1, &playerX, playerY, diffy);
-		if (*playerY != nPlayerY) {
-			/* sprite/player died */
-			ret = 2;
+		if (movingAngle == 90) {
+			diffxy = ye - *playerY;
+			nPlayerXY = *playerY + diffxy;
+		} else if (movingAngle == 270) {
+			diffxy = *playerY - ys;
+			nPlayerXY = *playerY - diffxy;
+		} else if (movingAngle == 180) {
+			diffxy = *playerX - xs;
+			nPlayerXY = *playerX - diffxy;
+		} else {
+			diffxy = xe - *playerX;
+			nPlayerXY = *playerX + diffxy;
+		}
+
+		if (flags & (1 << 3)) {
+			/* horizontally moving wall */
+			ret = move(movingAngle, 1, playerX, playerY, diffxy);
+			if (*playerX != nPlayerXY) {
+				/* sprite/player died */
+				ret = 2;
+			}
+		} else {
+			/* vertically moving wall */
+			ret = move(movingAngle, 1, playerX, playerY, diffxy);
+			if (*playerY != nPlayerXY) {
+				/* sprite/player died */
+				ret = 2;
+			}
 		}
 	}
 	return ret;
 }
 
+/*
+ * Speed translation table for moving walls. All speeds
+ * must be a power of 2
+ */
 static const uint8_t movingWallSpeedXlate[4] PROGMEM = {
 	1, 2, 4, 8,
 };
@@ -1641,7 +1679,7 @@ static const uint8_t movingWallSpeedXlate[4] PROGMEM = {
 void Engine::updateMoveables(void)
 {
 	/*
-	 * update vertical moving walls
+	 * update moving walls
 	 */
 	for (uint8_t mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
 		struct movingWall *mw = &es.ld.movingWalls[mwi];
@@ -1655,8 +1693,15 @@ void Engine::updateMoveables(void)
 		/* translate speed value */
 		speed = pgm_read_uint8(&movingWallSpeedXlate[speed]);
 
+		uint8_t mapXY;
+		/* check if it is a horizontally or vertically moving wall */
+		if (flags & (1 << 3))
+			mapXY = mw->mapX;
+		else
+			mapXY = mw->mapY;
+
 		if (mw->flags & MW_DIRECTION_INC) {
-			if (mw->mapY == mw->max) {
+			if (mapXY == mw->max) {
 				/* change direction */
 				mw->flags &= ~MW_DIRECTION_INC;
 				/* clear active flag if oneshot */
@@ -1664,15 +1709,15 @@ void Engine::updateMoveables(void)
 					mw->flags &= ~VMW_FLAG_ACTIVE;
 
 			} else {
-				/* moving down */
+				/* moving down/right */
 				mw->offset += speed;
 				if (mw->offset == BLOCK_SIZE) {
 					mw->offset = 0;
-					mw->mapY++;
+					mapXY++;
 				}
 			}
 		} else {
-			if (mw->mapY == mw->min && mw->offset == 0) {
+			if (mapXY == mw->min && mw->offset == 0) {
 				/* change direction */
 				mw->flags |= MW_DIRECTION_INC;
 				/* clear active flag if oneshot */
@@ -1680,22 +1725,31 @@ void Engine::updateMoveables(void)
 					mw->flags &= ~VMW_FLAG_ACTIVE;
 
 			} else {
-				/* moving up */
+				/* moving up/left */
 				if (mw->offset == 0) {
 					mw->offset = BLOCK_SIZE;
-					mw->mapY--;
+					mapXY--;
 				}
 
 				mw->offset -= speed;
 			}
 		}
+		/* write back the changed value */
+		if (flags & (1 << 3)) {
+			/* horizontally moving wall */
+			mw->mapX = mapXY;
+		} else {
+			/* vertically moving wall */
+			mw->mapY = mapXY;
+		}
+
 		/*
 		 * check if the player takes damage from a moving wall or
 		 * gets at least pushed back
 		 *
 		 * if MW_DIRECTION_INC the wall is moving down
 		 */
-		uint8_t ret = movingWallPushBack(es.ld.playerX, &es.ld.playerY, mw, flags);
+		uint8_t ret = movingWallPushBack(&es.ld.playerX, &es.ld.playerY, mw, flags);
 		switch (ret) {
 		case 1:
 			doDamageForVMW(mw);
@@ -1715,7 +1769,7 @@ void Engine::updateMoveables(void)
 
 			uint16_t x = s->xy & 0xfff;
 			uint16_t y = s->xy >> 12;
-			uint8_t ret = movingWallPushBack(x, &y, mw, flags);
+			uint8_t ret = movingWallPushBack(&x, &y, mw, flags);
 			SPRITE_XY_SET(s, x, y);
 			switch (ret) {
 			case 1:
@@ -1812,6 +1866,91 @@ uint16_t Engine::arc_u16(uint16_t value, const uint16_t *table, uint8_t tsize)
 		return index;
 
 	return previous_index;
+}
+
+uint8_t Engine::movingWallCheckHitVertical(uint8_t mapY, uint16_t a)
+{
+	uint8_t hit = 0;
+	uint16_t b = 0;
+	uint16_t mY = (uint16_t)mapY * BLOCK_SIZE;
+
+	/*
+	 *                  +-------------+-------------+
+	 *                  |   :         |   :         |
+	 *                  |   +         |   :         |
+	 *                  |   |  b      |   :         |
+	 *  P(x, y) +-----------+         |   :         |
+	 *             a    |   :         |   :         |
+	 *                  +-------------+-------------+
+	 */
+
+	if (es.nTempRayAngle != 90) {
+		b = divU24ByBlocksize((uint32_t)(pgm_tanByX(es.tempRayAngle)) * a);
+	} else {
+		/*
+		 * corner cases for angles of 90 degrees
+		 *
+		 *   a == 0: player faces block at 90 degrees from up or down,
+		 *           this is a horizontal hit of the ray
+		 *   a != 0: player faces block at 90 degrees from left or right,
+		 *           this is a vertical hit of the ray
+		 */
+		if (a == 0)
+			b = abs(es.ld.playerY - mY);
+	}
+
+	/*
+	 * Check if playerY +- b is inside the block of a moving wall which would
+	 * mean the ray would hit it somewhere and we need to calculate wallX and
+	 * raylength.
+	 * Just checking the upper and lower sides are ok because the wall is only
+	 * moving horizontally.
+	 */
+	if (rayAngle < 180) {
+		/*
+		 * if ray is above the block
+		 * (blockY + width of the block)
+		 */
+		hit = !!(((uint16_t)es.ld.playerY + b) <= (mY + BLOCK_SIZE - 1));
+	} else {
+		/* if ray is below the block */
+		/*
+		 * corner case:
+		 *   if b > playerY: the ray cannot hit the block,
+		 *   mostly the case when es.tempRayAngle gets close to 90
+		 */
+		if (b <= es.ld.playerY)
+			hit = !!((es.ld.playerY - b) >= mY);
+	}
+
+	if (hit) {
+		/* hit */
+		if (rayAngle != 90) {
+			// TODO use viewDirection for these kind of checks
+			if (rayAngle < 180)
+				es.wallX = es.ld.playerY + b - mY;
+			else
+				es.wallX = es.ld.playerY - b - mY;
+		} else {
+			es.wallX = es.ld.playerY % BLOCK_SIZE;
+		}
+		/*
+		 * TODO
+		 *
+		 * split triangle into two so we can use multiplication
+		 * with cosinus for the raylength calculation
+		 */
+		if (a == 0)
+			es.renderRayLength = b;
+		else
+			es.renderRayLength = (uint32_t)a * COSBYX / pgm_cosByX(es.tempRayAngle);
+
+	} else {
+		/* pass */
+		return 0;
+	}
+	/* hit */
+	return 1;
 }
 
 uint8_t Engine::movingWallCheckHitHorizontal(uint8_t mapX, uint16_t a)
@@ -1912,7 +2051,105 @@ uint8_t Engine::movingWallCheckHitHorizontal(uint8_t mapX, uint16_t a)
 
 /*
  * execute dedicated renderer for special objects like e.g. moving walls and
- * calculate horizontal intersections with them
+ * calculate vertical intersections with them (if the players coordinates are
+ * inside the block to render)
+ */
+uint8_t Engine::checkIgnoreBlockInnerVertical(uint8_t pMapX, uint8_t pMapY, uint8_t run)
+{
+	if (run)
+		return F0;
+
+	uint8_t tile = checkIgnoreBlock(pMapX, pMapY);
+
+	/* only handle moving walls at the moment */
+	if (tile != V_M_W)
+		return F0;
+
+	struct movingWall *mw;
+	uint8_t mXinc = 0;
+	uint8_t mwi;
+
+	/* find the moving wall tile the player is in */
+	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+
+		mw = &es.ld.movingWalls[mwi];
+
+		/* ignore if it is a vertical moving wall */
+		if ((mw->flags & (1 << 3)) == 0)
+			continue;
+
+		if (mw->offset == 0)
+			continue;
+		/*
+		 * If the offset is not zero we need to check if
+		 * the the current block is the current position
+		 * of the moving wall or if it is the second
+		 * block in which the moving wall is partially in.
+		 *
+		 * shortcut: as we are inside the block it is clear that
+		 *
+		 * block1: playerAngle (< 90  || >= 270) -> ray will miss the block
+		 * block2: playerAngle (>= 90 && < 270) -> ray will miss the block
+		 *
+		 */
+		if (pMapY != mw->mapY)
+			continue;
+
+		if (pMapX != mw->mapX) {
+
+			if (pMapX != mw->mapX + 1)
+				continue;
+
+			if (rayAngle < 90 || rayAngle >= 270) {
+				/* miss */
+				continue;
+			}
+
+			/* we are in block2 */
+			mXinc = 1;
+		} else if (rayAngle >= 90 && rayAngle < 270) {
+			/* miss */
+			continue;
+		}
+
+		/* found a matching wall */
+		break;
+	}
+
+	/* nothing found */
+	if (mwi == MAX_MOVING_WALLS)
+		return F0;
+
+	/* check if ray hits the wall */
+	uint16_t mX = (mw->mapX + mXinc) * BLOCK_SIZE;
+	uint16_t a;
+
+	if (mXinc) {
+		/*
+		 * ================ block 2 ==============
+		 */
+		a = es.ld.playerX - mX - mw->offset + 1;
+	} else {
+		/*
+		 * ================ block 1 ==============
+		 */
+		a = mX + mw->offset - es.ld.playerX;
+	}
+
+	if (movingWallCheckHitVertical(mw->mapY, a)) {
+		/* the wall found is the current moving wall */
+		es.cmw = mw;
+		return H_M_W_V;
+	}
+
+	/* ray missed the wall */
+	return F0;
+}
+
+/*
+ * execute dedicated renderer for special objects like e.g. moving walls and
+ * calculate horizontal intersections with them (if the players coordinates are
+ * inside the block to render)
  */
 uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, uint8_t run)
 {
@@ -1933,6 +2170,10 @@ uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, ui
 	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
 
 		mw = &es.ld.movingWalls[mwi];
+
+		/* ignore if it is a horizontal moving wall */
+		if ((mw->flags & (1 << 3)) != 0)
+			continue;
 
 		if (mw->offset == 0)
 			continue;
@@ -1995,7 +2236,7 @@ uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, ui
 	if (movingWallCheckHitHorizontal(mw->mapX, a)) {
 		/* the wall found is the current moving wall */
 		es.cmw = mw;
-		return V_M_W;
+		return V_M_W_H;
 	}
 
 	/* ray missed the wall */
@@ -2018,103 +2259,211 @@ uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, ui
 
 		mw = &es.ld.movingWalls[mwi];
 
-		/*
-		 * no need to check map corner case as all maps should have a
-		 * block border!
-		 */
-		blockY = mw->mapY;
+		if (mw->flags & (1 << 3)) {
+			/* horizontal moving walls */
+			/*
+			 * no need to check map corner case as all maps should have a
+			 * block border!
+			 */
+			blockY = mw->mapX;
 
-		/*
-		 * check if block we hit on the map is the current block1 of
-		 * a moving wall
-		 */
-		if (mapX != mw->mapX)
-			continue;
-
-		if (mw->mapY != mapY) {
-
-			if (mw->offset == 0)
+			/*
+			 * check if block we hit on the map is the current block1 of
+			 * a moving wall
+			 */
+			if (mapY != mw->mapY)
 				continue;
 
-			if (mapY != mw->mapY + 1)
-				continue;
+			if (mw->mapX != mapX) {
 
-			block2 = 1;
-		} else {
-			block2 = 0;
-		}
+				if (mw->offset == 0)
+					continue;
 
-		blockY += block2;
+				if (mapX != mw->mapX + 1)
+					continue;
 
-		uint16_t mY = (uint16_t)blockY * BLOCK_SIZE;
-		uint16_t offset = mY + mw->offset;
-
-		/* decide to either hit/pass/calc */
-		if (rayAngle < 180) {
-			/* Q1/Q2 */
-			if (block2) {
-				/* block 2 */
-				if (hY <= offset) {
-					/* hit */
-					tile = V_M_W;
-				} else {
-					/* pass */
-				}
+				block2 = 1;
 			} else {
-				/* block 1 */
-				if (hY <= offset) {
-					uint16_t a = mY - es.ld.playerY + mw->offset;
-					/* calc */
-					if (movingWallCheckHitHorizontal(mapX, a)) {
-						tile = V_M_W;
+				block2 = 0;
+			}
+
+			blockY += block2;
+
+			uint16_t mX = (uint16_t)blockY * BLOCK_SIZE;
+			uint16_t offset = mX + mw->offset;
+
+			/* decide to either hit/pass/calc from the left side and right side */
+			if (rayAngle < 90 || rayAngle >= 270) {
+				/* Q1/Q4 left side */
+				if (block2) {
+					/* block 2 */
+					if (hX <= offset) {
+						/* hit */
+						tile = H_M_W;
+					} else {
+						/* pass */
 					}
 				} else {
-					/* hit */
-					tile = V_M_W;
+					/* block 1 */
+					if (hX <= offset) {
+						uint16_t a = mX - es.ld.playerX + mw->offset;
+						/* calc */
+						if (movingWallCheckHitVertical(mapY, a)) {
+							tile = H_M_W_V;
+						}
+					} else {
+						/* hit */
+						tile = H_M_W;
+					}
+				}
+			} else {
+				/* Q2/Q3 right side */
+				if (block2) {
+					/* block 2 */
+					if (hX >= offset) {
+						uint16_t a = es.ld.playerX - mX - mw->offset + 1;
+						/* calc */
+						if (movingWallCheckHitVertical(mapY, a)) {
+							tile = H_M_W_V;
+						}
+					} else {
+						/* hit */
+						tile = H_M_W;
+					}
+				} else {
+					/* block 1 */
+					if (hX >= offset) {
+						/* hit */
+						tile = H_M_W;
+					} else {
+						/* pass */
+					}
 				}
 			}
 		} else {
-			/* Q3/Q4 */
-			if (block2) {
-				/* block 2 */
-				if (hY >= offset) {
-					uint16_t a = es.ld.playerY - mY - mw->offset + 1;
-					/* calc */
-					if (movingWallCheckHitHorizontal(mapX, a)) {
+			/* vertical moving walls */
+			/*
+			 * no need to check map corner case as all maps should have a
+			 * block border!
+			 */
+			blockY = mw->mapY;
+
+			/*
+			 * check if block we hit on the map is the current block1 of
+			 * a moving wall
+			 */
+			if (mapX != mw->mapX)
+				continue;
+
+			if (mw->mapY != mapY) {
+
+				if (mw->offset == 0)
+					continue;
+
+				if (mapY != mw->mapY + 1)
+					continue;
+
+				block2 = 1;
+			} else {
+				block2 = 0;
+			}
+
+			blockY += block2;
+
+			uint16_t mY = (uint16_t)blockY * BLOCK_SIZE;
+			uint16_t offset = mY + mw->offset;
+
+			/* decide to either hit/pass/calc */
+			if (rayAngle < 180) {
+				/* Q1/Q2 */
+				if (block2) {
+					/* block 2 */
+					if (hY <= offset) {
+						/* hit */
+						tile = V_M_W;
+					} else {
+						/* pass */
+					}
+				} else {
+					/* block 1 */
+					if (hY <= offset) {
+						uint16_t a = mY - es.ld.playerY + mw->offset;
+						/* calc */
+						if (movingWallCheckHitHorizontal(mapX, a)) {
+							tile = V_M_W_H;
+						}
+					} else {
+						/* hit */
+						tile = V_M_W;
+					}
+				}
+			} else {
+				/* Q3/Q4 */
+				if (block2) {
+					/* block 2 */
+					if (hY >= offset) {
+						uint16_t a = es.ld.playerY - mY - mw->offset + 1;
+						/* calc */
+						if (movingWallCheckHitHorizontal(mapX, a)) {
+							tile = V_M_W_H;
+						}
+					} else {
+						/* hit */
 						tile = V_M_W;
 					}
 				} else {
-					/* hit */
-					tile = V_M_W;
-				}
-			} else {
-				/* block 1 */
-				if (hY >= offset) {
-					/* hit */
-					tile = V_M_W;
-				} else {
-					/* pass */
+					/* block 1 */
+					if (hY >= offset) {
+						/* hit */
+						tile = V_M_W;
+					} else {
+						/* pass */
+					}
 				}
 			}
 		}
 		break;
 	}
 	if (tile != F0) {
-		/* hit */
-		if (es.wallX == -1) {
-			/*
-			 * calculate wallX for all hits not done via
-			 * movingWallCheckHitHorizontal. If hY is on a block boundary and
-			 * the moving wall offset is also at a block boundary then the wallX
-			 * must be derived from hX instead of hY.
-			 */
-			if ((mw->offset == 0) && ((hY + 1) % BLOCK_SIZE == 0)) {
-				es.wallX = hX % BLOCK_SIZE;
-			} else {
-				if (block2)
-					es.wallX = hY % BLOCK_SIZE + BLOCK_SIZE - mw->offset;
-				else
-					es.wallX = hY % BLOCK_SIZE - mw->offset;
+		if (mw->flags & (1 << 3)) {
+			/* calculate wallX for horizontal moving walls */
+			/* hit */
+			if (es.wallX == -1) {
+				/*
+				 * calculate wallX for all hits not done via
+				 * movingWallCheckHitVertical. If hX is on a block boundary and
+				 * the moving wall offset is also at a block boundary then the wallX
+				 * must be derived from hY instead of hX.
+				 */
+				if ((mw->offset == 0) &&
+				    ((hX % BLOCK_SIZE == 0) || ((hX + 1) % BLOCK_SIZE == 0))) {
+					es.wallX = hY % BLOCK_SIZE;
+				} else {
+					if (block2)
+						es.wallX = hX % BLOCK_SIZE + BLOCK_SIZE - mw->offset;
+					else
+						es.wallX = hX % BLOCK_SIZE - mw->offset;
+				}
+			}
+		} else {
+			/* calculate wallX for vertical moving walls */
+			/* hit */
+			if (es.wallX == -1) {
+				/*
+				 * calculate wallX for all hits not done via
+				 * movingWallCheckHitHorizontal. If hY is on a block boundary and
+				 * the moving wall offset is also at a block boundary then the wallX
+				 * must be derived from hX instead of hY.
+				 */
+				if ((mw->offset == 0) &&
+				    ((hY + 1) % BLOCK_SIZE == 0)) {
+					es.wallX = hX % BLOCK_SIZE;
+				} else {
+					if (block2)
+						es.wallX = hY % BLOCK_SIZE + BLOCK_SIZE - mw->offset;
+					else
+						es.wallX = hY % BLOCK_SIZE - mw->offset;
+				}
 			}
 		}
 		es.cmw = mw;
@@ -2250,15 +2599,28 @@ uint8_t Engine::checkSolidBlockCheap(uint8_t mapX, uint8_t mapY)
 	/* find the moving wall tile the player is in */
 	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++, mw++) {
 
-		if (mapX != mw->mapX)
-			continue;
-
-		if (mapY != mw->mapY) {
-
-			if (mapY != mw->mapY + 1)
+		if (mw->flags & (1 << 3)) {
+			if (mapY != mw->mapY)
 				continue;
 
-			/* we are in block2 */
+			if (mapX != mw->mapX) {
+
+				if (mapX != mw->mapX + 1)
+					continue;
+
+				/* we are in block2 */
+			}
+		} else {
+			if (mapX != mw->mapX)
+				continue;
+
+			if (mapY != mw->mapY) {
+
+				if (mapY != mw->mapY + 1)
+					continue;
+
+				/* we are in block2 */
+			}
 		}
 		/* else: we are in block1 */
 
@@ -2607,7 +2969,7 @@ uint8_t Engine::move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_
 		/*
 		 *  if moving wall, properly add the offset
 		 */
-		if (es.cmw) {
+		if (es.cmw && ((es.cmw->flags & (1 << 3)) == 0)) {
 			by = es.cmw->mapY * BLOCK_SIZE + es.cmw->offset;
 		} else {
 			by = cMapY * BLOCK_SIZE;
@@ -2621,7 +2983,14 @@ uint8_t Engine::move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_
 		/*
 		 * calculate values for y-axis intersection check
 		 */
-		bx = cMapX * BLOCK_SIZE;
+		/*
+		 *  if moving wall, properly add the offset
+		 */
+		if (es.cmw && ((es.cmw->flags & (1 << 3)) != 0)) {
+			bx = es.cmw->mapX * BLOCK_SIZE + es.cmw->offset;
+		} else {
+			bx = cMapX * BLOCK_SIZE;
+		}
 
 
 		yI->ml = bx;
@@ -3772,7 +4141,7 @@ void Engine::render(void)
 				 */
 				hTile = checkIgnoreBlockInnerHorizontal(es.ld.playerMapX, es.ld.playerMapY, run);
 				if (hTile != F0) {
-					hRayLength = es.renderRayLength;
+					hRayLength = 1;
 					goto horizontal_intersection_done2;
 				}
 
@@ -3860,10 +4229,24 @@ horizontal_intersection_done2:
 			if ((rayAngle != 90) && (rayAngle != 270)) {
 
 				uint8_t vBlockY;
+				uint16_t vX;
+				uint8_t hops = 0;
+
+				/*
+				 * Check for corner case if player is inside a block that
+				 * is not aligned to a BLOCK_SIZE boundary. This is the
+				 * case for e.g. moving walls which needs a dedicated renderer
+				 * when the player is close to them.
+				 */
+				vTile = checkIgnoreBlockInnerVertical(es.ld.playerMapX, es.ld.playerMapY, run);
+				if (vTile != F0) {
+					vRayLength = 1;
+					goto vertical_intersection_done2;
+				}
 
 				vBlockY = divU16ByBlocksize(vY);
 
-				uint8_t hops = pgm_read_uint8(&hopsPerAngle[es.tempRayAngle]);
+				hops = pgm_read_uint8(&hopsPerAngle[es.tempRayAngle]);
 				es.renderRayLength = -1;
 				es.wallX = -1;
 
@@ -3875,7 +4258,10 @@ horizontal_intersection_done2:
 					vTile = checkIgnoreBlockFast(vBlockX, vBlockY);
 					if (vTile) {
 						if (vTile == V_M_W) {
-							vTile = checkIfMovingWallHit(vBlockX, vBlockY, 0, vY);
+							vX = vBlockX * BLOCK_SIZE;
+							if (vStepX < 0)
+								vX += BLOCK_SIZE - 1;
+							vTile = checkIfMovingWallHit(vBlockX, vBlockY, vX, vY);
 							if (vTile)
 								break;
 						} else {
@@ -3885,19 +4271,15 @@ horizontal_intersection_done2:
 
 					vBlockX += vStepX;
 					vY += vStepY;
-
 					vBlockY = divU16ByBlocksize(vY);
 				}
 				/*
 				 * INFO: theoretically we should check for vTile != 0 but
 				 * practically all maps have a wall as border
 				 */
-				uint16_t vX = vBlockX * BLOCK_SIZE;
+				vX = vBlockX * BLOCK_SIZE;
 				if (vStepX < 0)
 					vX += BLOCK_SIZE - 1;
-
-				/* take whatever was calculated (or not) from the block functions */
-				vWallX = es.wallX;
 
 				uint16_t diffX;
 				if (es.ld.playerX < vX)
@@ -3913,6 +4295,11 @@ horizontal_intersection_done2:
 
 				/* use fine cosinus table to increase precision */
 				vRayLength  = ((uint32_t)diffY * cosAngle + (uint32_t)diffX * cosAngle2 + (FINE_BY_X / 2)) / FINE_BY_X;
+
+vertical_intersection_done2:
+				/* take whatever was calculated (or not) from the block functions */
+				vWallX = es.wallX;
+
 
 				if (vTile & HALF_BLOCKS_START) {
 					/*
@@ -3940,6 +4327,7 @@ horizontal_intersection_done2:
 				es.vcd = es.cd;
 				es.vct = es.ct;
 			}
+
 			/*
 			 * If horizontal rendering ray is shorter than the
 			 * vertical rendering ray, then pretend the vertical
@@ -3974,8 +4362,17 @@ horizontal_intersection_done2:
 
 				tile = hTile;
 
-				if (hWallX != -1) {
+				if (tile == H_M_W || tile == H_M_W_V || tile == V_M_W || tile == V_M_W_H) {
 					wallX = hWallX;
+					/*
+					 * fix texture orientation and block side for vertically hit
+					 * horizontally moving walls
+					 */
+					if (tile == H_M_W_V) {
+						blockSideInc = 1;
+						textureOrientation = vTextureOrientation;
+					}
+					tile = V_M_W; /* set to generic tile */
 				} else
 					wallX = hX % BLOCK_SIZE;
 
@@ -3988,13 +4385,17 @@ horizontal_intersection_done2:
 				textureOrientation = vTextureOrientation;
 				tile = vTile;
 
-				if (tile == V_M_W) {
+				if (tile == V_M_W || tile == V_M_W_H || tile == H_M_W || tile == H_M_W_V) {
 					wallX = vWallX;
-					/* if there is a renderRayLength then we hit the horizontal side */
-					if (es.renderRayLength != -1) {
+					/*
+					 * fix texture orientation and block side for horizontally hit
+					 * vertically moving walls
+					 */
+					if (tile == V_M_W_H) {
 						blockSideInc = 0;
 						textureOrientation = hTextureOrientation;
 					}
+					tile = V_M_W; /* set to generic tile */
 				} else
 					wallX = vY % BLOCK_SIZE;
 

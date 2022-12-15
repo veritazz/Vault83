@@ -3318,8 +3318,8 @@ constexpr uint24_t wall16x16_flashoffset                    = 0x003dc0;
  * ****_***
  */
 constexpr uint24_t wall8x8_flashoffset                      = 0x003de0;
-constexpr uint24_t dialogs_flashoffset                      = 0x003f00;
 constexpr uint24_t quests_flashoffset                       = 0x003f00;
+constexpr uint24_t dialogs_flashoffset                      = 0x003f00;
 
 /* dialog-00.bin height = 64 width = 128 */
 /* [0]
@@ -3481,7 +3481,7 @@ constexpr uint24_t levelData_flashoffset                    = 0x006000;
  * ==================================================
  *   triggers                                    : 6
  *   doors                                       : 3
- *   moving walls                                : 4
+ *   moving walls                                : 5
  *   sprites                                     : 17
  *   static sprites                              : 12
  *   quests                                      : 1
@@ -3489,13 +3489,13 @@ constexpr uint24_t levelData_flashoffset                    = 0x006000;
  * ----------------------------------------------------
  *   memory used for map                  (bytes): 1024
  *   memory used for triggers             (bytes): 36
- *   memory used for moving walls         (bytes): 24
+ *   memory used for moving walls         (bytes): 30
  *   memory used for doors                (bytes): 9
  *   memory used for sprites              (bytes): 97
  *   memory used for quests               (bytes): 18
  *   memory used for special walls       (bytes): 13
  * ----------------------------------------------------
- *   sum                                  (bytes): 1221
+ *   sum                                  (bytes): 1227
  * ====================================================
  */
 constexpr uint24_t level1_flashoffset                       = 0x006000;
