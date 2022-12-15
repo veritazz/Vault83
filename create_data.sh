@@ -9,7 +9,18 @@ cd ${output_dir}
 rm -f *
 
 ../scripts/generate_map.py ${asset_dir} .
+if [ $? -ne 0 ]
+then
+	echo "map generation failed..."
+	exit 1
+fi
+
 ../scripts/generate_tables.py
+if [ $? -ne 0 ]
+then
+	echo "table generation failed..."
+	exit 1
+fi
 
 
 
