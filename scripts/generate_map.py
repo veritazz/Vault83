@@ -550,9 +550,11 @@ def createDoor(line):
 
 	mapDoors[parts[0]] = flags
 
+createdMovingWallIDs = 0
 
 def createMovingWall(line):
 	global movingWalls
+	global createdMovingWallIDs
 	# Moving Walls (V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>)
 	parts = line.split()
 	wallID = parts[0]
@@ -573,10 +575,12 @@ def createMovingWall(line):
 	# create a trigger if this is a push wall
 	if parts[6].lower() == "yes":
 		# one shot trigger that activates the wall
-		obj_id = int(parts[0][1:], 0)
+		obj_id = createdMovingWallIDs
 		movingWalls[wallID] = [flags, parts[5], obj_id]
 	else:
 		movingWalls[wallID] = [flags, parts[5], None]
+
+	createdMovingWallIDs += 1
 
 totalSpriteTableEntries = 0
 
@@ -886,7 +890,7 @@ if __name__ == "__main__":
 
 				if triggerCount > maxTriggerCount:
 					print(("Error: Map " + map_filename + " has too many triggers\n"))
-					sys.exit()
+					sys.exit(1)
 
 				# pad up to max trigger count
 				for pad in range(maxTriggerCount - triggerCount):
@@ -905,7 +909,7 @@ if __name__ == "__main__":
 
 				if movingWallCount > maxMovingWallCount:
 					print(("Error: Map " + map_filename + " has too many moving walls\n"))
-					sys.exit()
+					sys.exit(1)
 
 				# pad up to max moving wall count
 				for pad in range(maxMovingWallCount - movingWallCount):
@@ -921,7 +925,7 @@ if __name__ == "__main__":
 
 				if doorCount > maxDoorCount:
 					print(("Error: Map " + map_filename + " has too many doors\n"))
-					sys.exit()
+					sys.exit(1)
 
 				# pad up to max door count
 				for pad in range(maxDoorCount - doorCount):
@@ -947,7 +951,7 @@ if __name__ == "__main__":
 
 				if spriteCount > maxSpriteCount:
 					print(("Error: Map " + map_filename + " has too many sprites (%u/%u)\n" % (spriteCount, maxSpriteCount)))
-					sys.exit()
+					sys.exit(1)
 
 				# pad up to max sprite count
 				for pad in range(maxSpriteCount + maxProjectileCount - spriteCount):
@@ -981,7 +985,7 @@ if __name__ == "__main__":
 
 				if staticSpriteCount > maxStaticSpriteCount:
 					print(("Error: Map " + map_filename + " has too many static sprites (%u/%u)\n" % (staticSpriteCount, maxStaticSpriteCount)))
-					sys.exit()
+					sys.exit(1)
 
 				# pad up to max sprite count
 				for pad in range(maxStaticSpriteCount - staticSpriteCount):
@@ -1016,7 +1020,7 @@ if __name__ == "__main__":
 
 				if questCount > maxQuestCount:
 					print(("Error: Map " + map_filename + " has too many quests\n"))
-					sys.exit()
+					sys.exit(1)
 
 				#
 				# write special wall data
