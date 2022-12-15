@@ -4141,7 +4141,7 @@ void Engine::render(void)
 				 */
 				hTile = checkIgnoreBlockInnerHorizontal(es.ld.playerMapX, es.ld.playerMapY, run);
 				if (hTile != F0) {
-					hRayLength = 1;
+					hRayLength = es.renderRayLength;
 					goto horizontal_intersection_done2;
 				}
 
@@ -4240,7 +4240,7 @@ horizontal_intersection_done2:
 				 */
 				vTile = checkIgnoreBlockInnerVertical(es.ld.playerMapX, es.ld.playerMapY, run);
 				if (vTile != F0) {
-					vRayLength = 1;
+					vRayLength = es.renderRayLength;
 					goto vertical_intersection_done2;
 				}
 
