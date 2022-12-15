@@ -4362,7 +4362,7 @@ vertical_intersection_done2:
 
 				tile = hTile;
 
-				if (tile == H_M_W || tile == H_M_W_V || tile == V_M_W || tile == V_M_W_H) {
+				if (tile >= V_M_W && tile <= H_M_W_V) {
 					wallX = hWallX;
 					/*
 					 * fix texture orientation and block side for vertically hit
@@ -4385,7 +4385,7 @@ vertical_intersection_done2:
 				textureOrientation = vTextureOrientation;
 				tile = vTile;
 
-				if (tile == V_M_W || tile == V_M_W_H || tile == H_M_W || tile == H_M_W_V) {
+				if (tile >= V_M_W && tile <= H_M_W_V) {
 					wallX = vWallX;
 					/*
 					 * fix texture orientation and block side for horizontally hit

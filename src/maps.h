@@ -48,14 +48,14 @@
  * special tags like doors, trigger, moving walls
  */
 #define TRIGGER              0x40            /* to trigger some action */
-#define V_M_W                0x41            /* vertical moving wall block */
-#define SHOOTING_WALL_L      0x42            /* wall that can shoot (left) */
-#define SHOOTING_WALL_R      0x43            /* wall that can shoot (right) */
-#define SHOOTING_WALL_U      0x44            /* wall that can shoot (up) */
-#define SHOOTING_WALL_D      0x45            /* wall that can shoot (down) */
+#define SHOOTING_WALL_L      0x41            /* wall that can shoot (left) */
+#define SHOOTING_WALL_R      0x42            /* wall that can shoot (right) */
+#define SHOOTING_WALL_U      0x43            /* wall that can shoot (up) */
+#define SHOOTING_WALL_D      0x44            /* wall that can shoot (down) */
 
-#define V_DOOR               0x46            /* vertical door, only used internally, do not use in maps */
-#define FLOOR_TRIGGER        0x47            /* triggers when player walks onto it */
+#define V_DOOR               0x45            /* vertical door, only used internally, do not use in maps */
+#define FLOOR_TRIGGER        0x46            /* triggers when player walks onto it */
+#define V_M_W                0x47            /* vertical moving wall block (or generic) */
 #define H_M_W                0x48            /* horizontal moving wall block */
 #define V_M_W_H              0x49            /* intermediate value for a vertical moving wall hit horizontally */
 #define H_M_W_V              0x50            /* intermediate value for a horizontal moving wall hit vertically */

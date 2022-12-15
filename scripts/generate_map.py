@@ -167,18 +167,18 @@ mtranslation = {
 	"st": 0x3e, #"w29",
 
 	# other
-	"T ": 64, #"TRIGGER",
-	"D ": 63, #"H_DOOR",
-	"VS": 0x41, #"V_M_W",
-	"v ": 0x41, #"V_M_W",
-	"VE": 0x41, #"V_M_W",
-	"HS": 0x41, #"V_M_W",
-	"HE": 0x41, #"V_M_W",
+	"T ": 0x40, #"TRIGGER",
+	"D ": 0x3f, #"H_DOOR",
+	"VS": 0x47, #"V_M_W",
+	"v ": 0x47, #"V_M_W",
+	"VE": 0x47, #"V_M_W",
+	"HS": 0x47, #"V_M_W",
+	"HE": 0x47, #"V_M_W",
 	"P ": 0, #"F0",
 	"S ": 0, #"F0",
 	"E ": 0, #"F0",
 	"I ": 0, #"F0",
-	"FT": 0x47, #"FLOOR_TRIGGER",
+	"FT": 0x46, #"FLOOR_TRIGGER",
 }
 
 def save_binary_data(f_data, f, padding=True):
