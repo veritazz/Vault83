@@ -11,6 +11,7 @@
 # [done] Make sprite move from time to time when attacking
 # Fix stencil buffer
 # Show different frames when sprite moves/attacks/dies/respawns
+# support halfblock shooting walls
 
 # issues
 - check if FX::readEnd() is really required at all places (maybe deselect is enough just before display update)
