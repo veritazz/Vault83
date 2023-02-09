@@ -10,7 +10,7 @@ halfBlockSize = int(blockSize / 2)
 mapWidth = 32
 mapHeight = 32
 
-maxTriggerCount = 6
+maxTriggerCount = 7
 maxMovingWallCount = 5
 maxDoorCount = 5
 maxSpriteCount = 40

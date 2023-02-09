@@ -4225,6 +4225,9 @@ horizontal_intersection_done2:
 			 * search vertical intersections until a wall is hit
 			 */
 			uint8_t vTile = F0;
+			es.cd = NULL;
+			es.cmw = NULL;
+			es.ct = NULL;
 
 			if ((rayAngle != 90) && (rayAngle != 270)) {
 
@@ -4555,7 +4558,7 @@ vertical_intersection_done2:
 		ri->rayLength = rayLength;
 		ri->wallX = wallX;
 
-		uint8_t flags = blockSideIndex;
+		uint8_t flags = blockSideIndex & 0x7;
 
 		void *ptr;
 		if (tile == TRIGGER) {
