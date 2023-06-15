@@ -124,6 +124,13 @@ if __name__ == "__main__":
 					# create an aligned offset
 					flashOffset += padOrAlign(outputBinFile, options, "pad", flashOffset, pageSize)
 
+					try:
+						size = int(txtFileName, 0)
+						flashOffset += size
+						outputBinFile.write(struct.pack('<B', 0) * size)
+					except:
+						pass
+
 					# write current flash offset
 					writeOffset(outputHFile, binFileName, flashOffset)
 
