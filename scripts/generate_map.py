@@ -522,6 +522,7 @@ triggerStates = {
 	"dialog"      : 2 << 3, #"TRIGGER_OBJ_DIALOG    ",
 	"next_level"  : 3 << 3, #"TRIGGER_OBJ_NEXT_LEVEL",
 	"quest"       : 4 << 3, #"TRIGGER_OBJ_QUEST     ",
+	"menu"        : 5 << 3, #"TRIGGER_OBJ_MENU      ",
 }
 
 def createTrigger(line):

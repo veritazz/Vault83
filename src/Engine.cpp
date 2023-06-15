@@ -475,6 +475,11 @@ void Engine::runTriggerAction(uint8_t old_state, struct trigger *t)
 		 *   obj_id != 0xff: level number given in obj_id
 		 */
 		setSystemEvent(EVENT_PLAYER_NEXT_LEVEL, t->obj_id);
+	} else if (object == TRIGGER_OBJ_MENU) {
+		/*
+		 * open the game menu
+		 */
+		setSystemEvent(EVENT_MENU, 0);
 	}
 }
 

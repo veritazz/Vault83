@@ -48,7 +48,7 @@ D2 no  no no  7
    T1     OFF     SWITCH         QUEST          1      14
    T2     OFF      FLOOR        DIALOG          1       1
    T3     OFF    ONESHOT    NEXT_LEVEL        255      14
-   T4     OFF      TOUCH        DIALOG          1       1
+   T4     OFF      TOUCH          MENU          1       1
 
 # Moving Walls
 # V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>

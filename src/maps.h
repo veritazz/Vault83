@@ -219,6 +219,7 @@
 #define TRIGGER_OBJ_DIALOG      (0x2 << 3)
 #define TRIGGER_OBJ_NEXT_LEVEL  (0x3 << 3)
 #define TRIGGER_OBJ_QUEST       (0x4 << 3)
+#define TRIGGER_OBJ_MENU        (0x5 << 3)
 
 /*----------------------------------------------------------
  * quest configuration
