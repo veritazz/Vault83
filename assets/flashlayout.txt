@@ -55,6 +55,9 @@ hud.bin, hud.txt, pad
 icons-hud-weapon.bin, icons-hud-weapon.txt, pad
 item-weapon-1.bin, item-weapon-1.txt, pad
 mainscreen.bin, mainscreen.txt, pad
+loadscreen.bin, loadscreen.txt, pad
+savescreen.bin, savescreen.txt, pad
+donescreen.bin, donescreen.txt, pad
 menu_arrow.bin, menu_arrow.txt, pad
 player-weapons.bin, player-weapons.txt, pad
 background.bin, background.txt, pad
@@ -125,3 +128,5 @@ level2_specialWalls.bin,, pad 128
 #
 rayLengths.bin,,pad
 distances.bin,,pad
+#
+saveGame, 4096,pad

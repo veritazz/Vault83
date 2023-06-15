@@ -72,6 +72,9 @@ hud
 icons-hud-weapon
 item-weapon-1
 mainscreen
+loadscreen
+savescreen
+donescreen
 menu_arrow
 player-weapons
 texture-wall-1
