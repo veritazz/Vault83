@@ -593,6 +593,7 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 {
 	char c;
 	uint8_t v;
+	uint8_t rx = x;
 	/* calculate buffer address */
 	unsigned char *buffer = arduboy->getBuffer() + page + (x * HEIGHT_BYTES);
 
@@ -608,6 +609,13 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 		if (!c)
 			break;
 
+		if (c == 0xa) {
+			page += 1;
+			buffer = arduboy->getBuffer() + page + (x * HEIGHT_BYTES);
+			rx = x;
+			continue;
+		}
+
 		if (c == ' ')
 			c = 36;
 		else if (c < 'a')
@@ -618,19 +626,19 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 		FX::seekData(characters_3x4_flashoffset + (c * 3));
 
 		v = FX::readPendingUInt8();
-		buffer[0] = v >> 1;
+		buffer[0] = v;
 		v = FX::readPendingUInt8();
-		buffer[HEIGHT_BYTES * 1] = v >> 1;
+		buffer[HEIGHT_BYTES * 1] = v;
 		v = FX::readEnd();
-		buffer[HEIGHT_BYTES * 2] = v >> 1;
+		buffer[HEIGHT_BYTES * 2] = v;
 		buffer[HEIGHT_BYTES * 3] = 0;
 
 		buffer += HEIGHT_BYTES * 4;
 
-		x += 4;
+		rx += 4;
 	}
 
-	return x;
+	return rx;
 }
 
 void Engine::drawNumber(uint8_t x, uint8_t y, uint8_t number)
