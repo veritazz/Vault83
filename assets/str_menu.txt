@@ -1,1 +1,4 @@
-play           load
+new
+load
+save
+options

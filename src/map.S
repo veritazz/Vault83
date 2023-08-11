@@ -21,8 +21,6 @@
 ; Y = 29:28
 ; X = 27:26
 
-.extern levelFlashOffset
-
 	.section .text
 
 #ifdef CONFIG_ASM_OPTIMIZATIONS
@@ -82,7 +80,7 @@ checkIgnoreBlock:
 	; precalc (programDataPage << 8) + levelFlashOffset
 	;
 	;
-	lds r23, levelFlashOffset + 2               ; (2) load addr[2]
+	lds r23, (es + offsetof_engineState_levelFlashOffset + 2)     ; (2) load addr[2]
 
 	;
 	; 24bit flash address
@@ -99,9 +97,9 @@ checkIgnoreBlock:
 	eor r1, r1                           ; (1) zero r1
 	adc r25, r1                          ; (1) add carry from (add mapX)
 
-	lds r22, levelFlashOffset + 0       ; (2) load addr[0]
+	lds r22, (es + offsetof_engineState_levelFlashOffset + 0)       ; (2) load addr[0]
 	add r24, r22                         ; (1) add offset low byte
-	lds r22, levelFlashOffset + 1       ; (2) load addr[1]
+	lds r22, (es + offsetof_engineState_levelFlashOffset + 1)       ; (2) load addr[1]
 	adc r25, r22                         ; (1) add offset high byte + carry
 
 	nop                                  ; (1) burn 1 cycle
@@ -161,7 +159,7 @@ readThroughCache2:
 	; precalc (programDataPage << 8) + levelFlashOffset
 	;
 	;
-	lds r23, levelFlashOffset + 2     ; (2)
+	lds r23, (es + offsetof_engineState_levelFlashOffset + 2)     ; (2)
 
 ; 14 free
 	movw r30, r20             ; (1) move cache into Z
@@ -206,9 +204,9 @@ readThroughCache2:
 	eor r1, r1                           ; (1)
 	adc r25, r1                          ; (1)
 
-	lds r22, levelFlashOffset + 0       ; (2)
+	lds r22, (es + offsetof_engineState_levelFlashOffset + 0)       ; (2)
 	add r22, r24                         ; (1)
-	lds r23, levelFlashOffset + 1       ; (2)
+	lds r23, (es + offsetof_engineState_levelFlashOffset + 1)       ; (2)
 	adc r23, r25                         ; (1)
 
 	ld r24, Z                 ; (2) load cache entry mapX

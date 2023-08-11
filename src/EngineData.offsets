@@ -12,6 +12,7 @@
 void dummy() {
 	ASMDEFINE(engineState, screenColumn);
 	ASMDEFINE(engineState, texColumn);
+	ASMDEFINE(engineState, levelFlashOffset);
 
 	ASMDEFINE(renderInfo, ystart);
 	ASMDEFINE(renderInfo, yend);

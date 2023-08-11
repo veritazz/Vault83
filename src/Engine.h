@@ -111,8 +111,9 @@ enum system_events {
 	EVENT_PLAYER_NEXT_LEVEL = 2,
 	EVENT_DIALOG            = 4,
 	EVENT_QUEST             = 8,
+	EVENT_MENU              = 16,
 
-	EVENT_MAX_NR            = 8,
+	EVENT_MAX_NR            = 16,
 };
 
 struct intersect {
@@ -159,42 +160,23 @@ struct cache_entry {
 	uint8_t dummy; /* every 4th byte needs to be preserved */
 };
 
-struct quest {
-	uint8_t itemType;                /* type of item to collect */
-	uint8_t itemSuccessCount;        /* number of items for success */
-	uint8_t enemyKillType;           /* type of enemy to kill */
-	uint8_t enemyKillSuccessCount;   /* number of kills for success */
-	uint8_t eventType;               /* type of event */
-	uint8_t eventSuccessCount;       /* number of events for success */
-};
-
-#define AUDIO_EFFECT_ID_ENVIRONMENT         0
-#define AUDIO_EFFECT_ID_WEAPON              1
-#define AUDIO_EFFECT_ID_MAP                 2
-#define AUDIO_EFFECT_ID_MUSIC               3
-
-#define AUDIO_EFFECT_TRIGGER_START          1
-#define AUDIO_EFFECT_TRIGGER_STOP           2
-
-struct audio_effect {
-	uint8_t trigger:2;
-	uint8_t data:6;
-};
-
-#define SHOOTING_WALL_COOLDOWN              FPS * 1 /* 1 seconds */
-#define SPRITE_RESPAWN_TIMEOUT              30      /* in seconds */
+#define ENGINE_FLAGS_RUNNING                (1 << 0)
 
 class Engine
 {
 public:
 	Engine(Arduboy2Ex &a);
 	void init(void);
+	void deinit(void);
 	/*
 	 * this must not be inlined otherwise the stack usage will be
 	 * too high and lead to weird crashes
 	 */
 	void render(void) __attribute__ ((noinline));
 	void update(void);
+	int running(void);
+	void load(void);
+	void save(void);
 	void drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, uint8_t h, uint8_t color);
 	uint8_t drawString(uint8_t x, uint8_t page, uint24_t message);
 
@@ -228,6 +210,7 @@ public:
 	 */
 	int8_t vMove;
 
+	uint8_t flags;
 private:
 	Arduboy2Ex *arduboy;
 
@@ -325,37 +308,6 @@ private:
 	uint8_t compareGreaterOrEqual(uint8_t index1, uint8_t index2);
 	uint8_t readThroughCache(uint8_t mapX, uint8_t mapY);
 
-	/*
-	 * quest data
-	 * TODO move into leveldata so it can be saved
-	 */
-	uint8_t activeQuestId;                          /* id of active quest, 0xff indicates that no quest is active */
-	uint8_t questsFinished[(MAX_QUESTS + 7) / 8];   /* bitfield of finished quests: 1 means finished */
-
-	/*
-	 * current level number (counting starts at 0)
-	 */
-	uint8_t currentLevel;
-
-	/*
-	 * coolDown for shooting walls
-	 */
-	uint8_t shootingWallCoolDown;      /* time in frames before the next shot */
-
-	/*
-	 * free running attack properties
-	 */
-	uint8_t attackCoolDown;          /*  cooldown in frames until the next enemy attack */
-	uint8_t attackLevel;             /*  current attack level, if threshold is reached the enemy will attack */
-
-	/*
-	 * audio effects to play
-	 */
-	struct audio_effect audioEffects[4];
-
-#ifndef CONFIG_ASM_OPTIMIZATIONS
-	uint24_t levelFlashOffset;
-#endif
 };
 
 #endif

@@ -184,6 +184,31 @@ struct statusMessage {
 	uint8_t timeout;
 };
 
+struct quest {
+	uint8_t itemType;                /* type of item to collect */
+	uint8_t itemSuccessCount;        /* number of items for success */
+	uint8_t enemyKillType;           /* type of enemy to kill */
+	uint8_t enemyKillSuccessCount;   /* number of kills for success */
+	uint8_t eventType;               /* type of event */
+	uint8_t eventSuccessCount;       /* number of events for success */
+};
+
+#define AUDIO_EFFECT_ID_ENVIRONMENT         0
+#define AUDIO_EFFECT_ID_WEAPON              1
+#define AUDIO_EFFECT_ID_MAP                 2
+#define AUDIO_EFFECT_ID_MUSIC               3
+
+#define AUDIO_EFFECT_TRIGGER_START          1
+#define AUDIO_EFFECT_TRIGGER_STOP           2
+
+struct audio_effect {
+	uint8_t trigger:2;
+	uint8_t data:6;
+};
+
+#define SHOOTING_WALL_COOLDOWN              FPS * 1 /* 1 seconds */
+#define SPRITE_RESPAWN_TIMEOUT              30      /* in seconds */
+
 
 struct engineState {
 	uint8_t screenColumn[8] __attribute__ ((aligned (8))); /* buffer for one rendered screen column */
@@ -285,6 +310,36 @@ struct engineState {
 	 * timeout in seconds when a sprite can respawn
 	 */
 	uint8_t spriteRespawnTimeout;
+
+	/*
+	 * quest data
+	 * TODO move into leveldata so it can be saved
+	 */
+	uint8_t activeQuestId;                          /* id of active quest, 0xff indicates that no quest is active */
+	uint8_t questsFinished[(MAX_QUESTS + 7) / 8];   /* bitfield of finished quests: 1 means finished */
+
+	/*
+	 * current level number (counting starts at 0)
+	 */
+	uint8_t currentLevel;
+
+	/*
+	 * coolDown for shooting walls
+	 */
+	uint8_t shootingWallCoolDown;      /* time in frames before the next shot */
+
+	/*
+	 * free running attack properties
+	 */
+	uint8_t attackCoolDown;          /*  cooldown in frames until the next enemy attack */
+	uint8_t attackLevel;             /*  current attack level, if threshold is reached the enemy will attack */
+
+	/*
+	 * audio effects to play
+	 */
+	struct audio_effect audioEffects[4];
+
+	uint24_t levelFlashOffset;
 
 	/*
 	 * level init data

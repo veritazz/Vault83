@@ -204,28 +204,108 @@ static enum gameStates gameStateMenu(void)
 
 		finish_frame(true);
 		/* display game main screen */
-		engine.drawBitmap(0, 8, mainscreen_flashoffset, 128, 24, WHITE);
+		engine.drawBitmap(0, 0, mainscreen_flashoffset, 128, 24, WHITE);
 
-		engine.drawString(24, 4, str_menu_flashoffset);
+		engine.drawString(24, 3, str_menu_flashoffset);
 		engine.drawString(32, 7, str_credits_flashoffset);
-		engine.drawBitmap(10 + selection * 60, 34, menu_arrow_flashoffset, 12, 6, WHITE);
+		engine.drawBitmap(10, 26 + selection * 8, menu_arrow_flashoffset, 12, 6, WHITE);
 
 		finish_frame(false);
 		while (arduboy.notPressed(0xff))
 			;
 
-		if (arduboy.justPressed(LEFT_BUTTON))
+		if (arduboy.justPressed(UP_BUTTON))
 			selection--;
-		else if (arduboy.justPressed(RIGHT_BUTTON))
+		else if (arduboy.justPressed(DOWN_BUTTON))
 			selection++;
 
-		selection &= 1;
+		selection &= 0x3;
+
+		if (arduboy.justPressed(B_BUTTON) && engine.running()) {
+			selection = 4;
+			break;
+		}
 
 	} while (arduboy.justPressed(A_BUTTON) == 0);
 
-	transitScreen();
+	switch (selection) {
+	case 0:
+		/* new game */
+		transitScreen();
+		engine.init();
+		// return GAME_PLAY
+		break;
+	case 1:
+		/* load game */
+		// if engine.loadable() else return to main menu
+		// show load screen (small delay)
+		engine.drawBitmap(0, 0, loadscreen_flashoffset, 128, 24, WHITE);
+		finish_frame(false);
+		do {
+			while (!next_frame())
+				;
+		} while (arduboy.justPressed(A_BUTTON) == 0);
 
-	engine.init();
+		engine.load();
+
+		// show done screen (press key)
+		engine.drawBitmap(0, 0, donescreen_flashoffset, 128, 24, WHITE);
+		finish_frame(false);
+		do {
+			while (!next_frame())
+				;
+		} while (arduboy.justPressed(A_BUTTON) == 0);
+
+		transitScreen();
+		return GAME_PLAY;
+		break;
+	case 2:
+		/* save game */
+		// if engine.running() else return to main menu
+		if (!engine.running())
+			return GAME_MENU;
+		// show save screen (small delay)
+		engine.drawBitmap(0, 0, savescreen_flashoffset, 128, 24, WHITE);
+		finish_frame(false);
+#if 1
+		do {
+			while (!next_frame())
+				;
+		} while (arduboy.justPressed(A_BUTTON) == 0);
+#endif
+		engine.save();
+// TODO
+			while (!next_frame())
+				;
+			while (!next_frame())
+				;
+			while (!next_frame())
+				;
+			while (!next_frame())
+				;
+
+		// show done screen (press key)
+		engine.drawBitmap(0, 0, donescreen_flashoffset, 128, 24, WHITE);
+		finish_frame(false);
+		do {
+			while (!next_frame())
+				;
+		} while (arduboy.justPressed(A_BUTTON) == 0);
+		return GAME_MENU;
+		break;
+	case 3:
+		/* options */
+		// music on/off
+		// sfx on/off
+		break;
+	case 4:
+		/* leave menu while engine.running() */
+		// transitScreen()
+		//return GAME_PLAY
+		break;
+	default:
+		break;
+	}
 
 	return GAME_PLAY;
 }
@@ -252,6 +332,9 @@ static enum gameStates gameStatePlay(void)
 	} else if (gameEvents & EVENT_QUEST) {
 		/* start a quest */
 		return GAME_QUEST;
+	} else if (gameEvents & EVENT_MENU) {
+		/* return to menu */
+		return GAME_MENU;
 	}
 
 	/* just continue with next render loop */
@@ -370,6 +453,8 @@ static enum gameStates gameStateEndDeath(void)
 
 	engine.simulation = 0;
 
+	engine.deinit();
+
 	return GAME_MENU;
 }
 
@@ -390,6 +475,7 @@ static enum gameStates gameStateEnd(void)
 
 	engine.simulation = 0;
 //	engine.vMove = 0;
+	engine.deinit();
 
 	return GAME_MENU;
 }

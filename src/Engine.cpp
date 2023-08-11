@@ -24,10 +24,6 @@ static const uint8_t * const mapSounds[] PROGMEM = {
 };
 #endif
 
-#ifdef CONFIG_ASM_OPTIMIZATIONS
-uint24_t levelFlashOffset;
-#endif
-
 /*
  * way to put pseudo variable at a fixed address to prevent memory corruption
  * by variables placed by bootloaders
@@ -142,26 +138,35 @@ void Engine::init(void)
 	/*
 	 * load all init data in one shot
 	 */
-	uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * currentLevel);
+	uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * es.currentLevel);
 
 	FX::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT), (uint8_t *)&es.ld, (size_t)sizeof(struct level_initdata));
 
 	es.ld.playerAngle = 100;
 
 #ifndef CONFIG_ASM_OPTIMIZATIONS
-	levelFlashOffset = levelOffset;
+	es.levelFlashOffset = levelOffset;
 #else
-	levelFlashOffset = ((uint24_t)FX::programDataPage << 8) + levelOffset;
+	es.levelFlashOffset = ((uint24_t)FX::programDataPage << 8) + levelOffset;
 #endif
 
 
 	/* by default no quest is active */
-	activeQuestId = QUEST_NOT_ACTIVE;
+	es.activeQuestId = QUEST_NOT_ACTIVE;
 
 	es.spriteRespawnTimeout = SPRITE_RESPAWN_TIMEOUT;
 
 	/* initial setup */
 	update();
+
+	/* mark it running */
+	flags |= ENGINE_FLAGS_RUNNING;
+}
+
+void Engine::deinit(void)
+{
+	/* mark it not running */
+	flags &= ~(ENGINE_FLAGS_RUNNING);
 }
 
 /*
@@ -458,7 +463,7 @@ void Engine::runTriggerAction(uint8_t old_state, struct trigger *t)
 		 * check if player does already has a quest or if
 		 * the new quest is the current quest
 		 */
-		if (activeQuestId == QUEST_NOT_ACTIVE || activeQuestId == t->obj_id) {
+		if (es.activeQuestId == QUEST_NOT_ACTIVE || es.activeQuestId == t->obj_id) {
 			/* set quest system event for the new quest */
 			setSystemEvent(EVENT_QUEST, t->obj_id);
 		} else {
@@ -698,8 +703,8 @@ uint8_t Engine::enemyStateAttack(struct current_sprite *cs, uint8_t speed)
 		 * if cooldown has expired and attack threshold is reached
 		 * the sprite can do damage
 		 */
-		if (attackCoolDown == 0) {
-			if (attackLevel > ENEMY_ATTACK_THRESHOLD) {
+		if (es.attackCoolDown == 0) {
+			if (es.attackLevel > ENEMY_ATTACK_THRESHOLD) {
 				/* Do dummy move with range attack step (range - minWallDistance)
 				 * to check if enemy has free line of sight, if not, do random
 				 * moves.
@@ -1108,13 +1113,12 @@ static const uint8_t projectileMovementSpeeds [] PROGMEM = {
 void Engine::updateSpecialWalls(void)
 {
 	/* update shooting walls */
-	if (shootingWallCoolDown == 0)
-		shootingWallCoolDown = SHOOTING_WALL_COOLDOWN;
+	if (es.shootingWallCoolDown == 0)
+		es.shootingWallCoolDown = SHOOTING_WALL_COOLDOWN;
 	else
-		shootingWallCoolDown--;
+		es.shootingWallCoolDown--;
 
-	if (shootingWallCoolDown == 0) {
-		FX::seekData(level1_specialWalls_flashoffset + (currentLevel * specialWallsDataAlignment));
+	if (es.shootingWallCoolDown == 0) {
 		for (uint8_t p = es.ld.nr_of_sprites; p < (es.ld.nr_of_sprites + es.ld.maxSpecialWalls); p++) {
 			struct sprite *s = &es.ld.dynamic_sprites[p];
 			if (!IS_INACTIVE(s->flags)) {
@@ -1416,11 +1420,11 @@ void Engine::update(void)
 	/*
 	 * update attack counters
 	 */
-	attackLevel += es.randomNumber;
-	if (attackCoolDown == 0) {
-		attackCoolDown = FPS;
+	es.attackLevel += es.randomNumber;
+	if (es.attackCoolDown == 0) {
+		es.attackCoolDown = FPS;
 	} else {
-		attackCoolDown--;
+		es.attackCoolDown--;
 	}
 
 	updateTextureEffects();
@@ -1561,7 +1565,7 @@ void Engine::update(void)
 		struct sprite *s = &es.ld.dynamic_sprites[sprite_id];
 		if (IS_INACTIVE(s->flags)) {
 			/* calculate position of leveldata in flash */
-			uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * currentLevel);
+			uint24_t levelOffset = levelData_flashoffset + (levelDataAlignment * es.currentLevel);
 
 			/* reload positon and flags */
 			FX::readDataBytes(levelOffset + (MAP_WIDTH * MAP_HEIGHT) + offsetof(struct level_initdata, dynamic_sprites) + (sizeof(struct sprite) * sprite_id),
@@ -1582,6 +1586,34 @@ void Engine::update(void)
 	/* update timer based on seconds */
 	if ((es.frame % FPS) == 0) {
 		es.spriteRespawnTimeout--;
+	}
+}
+
+int Engine::running(void)
+{
+	return (flags & ENGINE_FLAGS_RUNNING);
+}
+
+constexpr uint24_t saveGamePage = saveGame_flashoffset / 256;
+
+void Engine::load(void)
+{
+	FX::readSaveBytes(saveGame_flashoffset, (uint8_t *)&es, sizeof(es));
+
+	/* mark it running */
+	flags |= ENGINE_FLAGS_RUNNING;
+}
+
+void Engine::save(void)
+{
+	uint8_t page;
+	uint8_t pages = (sizeof(es) + 255) / 256;
+	uint8_t *buffer = (uint8_t *)&es;
+
+	for (page = 0; page < pages; page++) {
+		FX::eraseSaveBlock(saveGamePage + page);
+		FX::writeSavePage(saveGamePage + page, buffer);
+		buffer += 256;
 	}
 }
 
@@ -3173,9 +3205,9 @@ uint8_t Engine::getSystemEvents(void)
 
 uint8_t Engine::jumpToLevel(uint8_t level)
 {
-	currentLevel = level;
-	if (currentLevel >= MAX_LEVELS) {
-		currentLevel = MAX_LEVELS - 1;
+	es.currentLevel = level;
+	if (es.currentLevel >= MAX_LEVELS) {
+		es.currentLevel = MAX_LEVELS - 1;
 		return 0;
 	}
 	return 1;
@@ -3183,32 +3215,32 @@ uint8_t Engine::jumpToLevel(uint8_t level)
 
 uint8_t Engine::nextLevel(void)
 {
-	return jumpToLevel(currentLevel + 1);
+	return jumpToLevel(es.currentLevel + 1);
 }
 
 uint8_t Engine::setActiveQuest(uint8_t questId)
 {
-	if (activeQuestId == QUEST_NOT_ACTIVE && questId != activeQuestId) {
-		activeQuestId = questId;
+	if (es.activeQuestId == QUEST_NOT_ACTIVE && questId != es.activeQuestId) {
+		es.activeQuestId = questId;
 	}
 
-	return !!(activeQuestId == questId);
+	return !!(es.activeQuestId == questId);
 }
 
 uint8_t Engine::isActiveQuestFinished(void)
 {
-	return !!(questsFinished[activeQuestId / 8] | (1 << (activeQuestId % 8)));
+	return !!(es.questsFinished[es.activeQuestId / 8] | (1 << (es.activeQuestId % 8)));
 }
 
 void Engine::evaluateActiveQuest(void)
 {
-	if (activeQuestId == QUEST_NOT_ACTIVE || isActiveQuestFinished())
+	if (es.activeQuestId == QUEST_NOT_ACTIVE || isActiveQuestFinished())
 		return;
 
 	// TODO read quest log from flash and proceed, update questlog entry
 
 	/* finish quest if log entry says finished */
-	questsFinished[activeQuestId / 8] |= 1 << (activeQuestId % 8);
+	es.questsFinished[es.activeQuestId / 8] |= 1 << (es.activeQuestId % 8);
 }
 
 void Engine::rewardActiveQuest(void)
@@ -3216,12 +3248,12 @@ void Engine::rewardActiveQuest(void)
 	// TODO read reward section of active quest and apply it
 
 	/* reset quest ID */
-	activeQuestId = QUEST_NOT_ACTIVE;
+	es.activeQuestId = QUEST_NOT_ACTIVE;
 }
 
 void Engine::startAudioEffect(uint8_t id, uint8_t data)
 {
-	struct audio_effect *ae = &audioEffects[id];
+	struct audio_effect *ae = &es.audioEffects[id];
 
 	// TODO check if distance to object is ok?
 
@@ -3231,7 +3263,7 @@ void Engine::startAudioEffect(uint8_t id, uint8_t data)
 
 void Engine::stopAudioEffect(uint8_t id)
 {
-	struct audio_effect *ae = &audioEffects[id];
+	struct audio_effect *ae = &es.audioEffects[id];
 
 	ae->trigger = AUDIO_EFFECT_TRIGGER_STOP;
 }
@@ -4810,8 +4842,14 @@ bitSet(PORTF, 1);
 		/* deselect cart */
 		FX::readEnd();
 
+#if defined(CONFIG_FPS_MEASUREMENT)
+	drawing_start = millis();
+#endif
 		/* handle sprites for this ray */
 		handleSprites(rayLength, playerFOVLeftAngle, re);
+#ifdef CONFIG_FPS_MEASUREMENT
+	drawing = millis() - drawing_start;
+#endif
 
 		/* copy current screen column into next column */
 		unsigned char *buffer = arduboy->getBuffer() + (ray * 2 * HEIGHT_BYTES);
@@ -4843,7 +4881,7 @@ bitClear(PORTF, 1);
 
 #if defined(CONFIG_FPS_MEASUREMENT)
 	drawing_start = millis();
-	render_draw = drawing_start - render_draw_start;
+	render_draw = millis() - render_draw_start;
 #endif
 
 	/***************************************************************
@@ -4887,12 +4925,9 @@ bitClear(PORTF, 1);
 
 	/* next frame */
 	es.frame++;
-#ifdef CONFIG_FPS_MEASUREMENT
-	drawing = millis() - drawing_start;
-#endif
 #ifdef AUDIO
 	/* handle audio */
-	struct audio_effect *ae = &audioEffects[0];
+	struct audio_effect *ae = &es.audioEffects[0];
 	const uint8_t *sound;
 
 	/* environments */
