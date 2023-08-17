@@ -396,10 +396,6 @@ drawTextureColumnScaleUp2:
 	push r17
 	push r28
 	push r29
-;	push r18
-;	push r19
-
-	clt                ; (1) clear T flag
 
 	eor r11, r11       ; (1) r11 = texY = 0
 	mov r12, r22       ; (1) r12 = sWallHeight
@@ -513,32 +509,14 @@ _screenY_positive:
 	; main drawing loop
 	;
 	;--------------------------------
-_drawing_loop:
-; TODO once?
 	cpse r25, r1     ; (1/2) check if pixels to skip
 	rjmp _skip       ; (2) jump to skip code
 
+_drawing_loop:
 	mov r0, r9       ; (1) copy texels as "and" will modify Rd
 	and r0, r10      ; (1) check if texel need to be drawn (texels & texShift)
 	brne 2f          ; (1/2) branch to draw (3 = no draw, 2 = draw)
 	rjmp 1f          ; (2) branch to no draw
-
-	;
-	; if T is clear then remember this as the first y that a pixel was drawn to
-	;
-	brbs 6, _first_pixel_drawn
-	set
-;	pop r30
-;	pop r31
-;	std Z+2, r14
-;	push r30
-;	push r31
-_first_pixel_drawn:
-	;
-	; remember last screenY (nscreenY + tmp_px)
-	;
-	mov r23, r14     ; (1) load nscreenY into register
-	add r23, r8      ; (1) add tmp_px to nscreenY
 2:
 
 	;--------------------------------
@@ -725,8 +703,8 @@ _draw_loop_next_texel:
 	brne 2f                ; ...
 	ld r9, Y+              ; load next texture byte (texels)
 2:
-	lsl r10           ; shift to next pixel of interest in texture byte
-	brcc 3f                ; if no bit went into carry just continue
+	lsl r10                ; shift to next pixel of interest in texture byte
+	brcc 3f                ; (1/2) if no bit went into carry just continue
 	; texShift became zero
 	adc r10, __zero_reg__      ; add carry to texShift (texShift becomes 1)
 	in r15, 0x2e    ; px_pattern = SPDR, read next pattern from flash
@@ -742,20 +720,13 @@ _draw_loop_next_texel:
 	mov r8, r12    ; (1) else set tmp_px to sWallHeight
 4:
 	; continue the loop
-	rjmp _drawing_loop
+	rjmp _drawing_loop      ; (2)
 5:
 	; TODO done
-	;ldi r24, 56 ; SCREEN_HEIGHT
-	;sub r24, r13 ; r24 contains the y position where drawing started
 	mov r24, r14
 	sub r24, r13
 
-; hack
 	ldi r24, 0
-
-	;pop r30
-	;pop r31
-	;std Z+3, r23
 1:
 
 	; TODO pop
@@ -785,8 +756,11 @@ _skip:
 	sub r0, r25
 	add r14, r0            ; (1) nScreenY += tmp_px
 	sub r12, r0            ; (1) sWallHeight -= tmp_px
+
+tst r25
+breq _draw_loop_next_texel
+
 	mov r8, r25
-	eor r25, r25
 	rjmp _drawing_loop
 6:
 	rjmp 1b
