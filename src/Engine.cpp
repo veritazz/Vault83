@@ -8,6 +8,7 @@
 
 #include "drawing.h"
 #include "map.h"
+#include "flash.h"
 
 #ifdef AUDIO
 #include <ATMlib2.h>
@@ -537,7 +538,8 @@ void Engine::setStatusMessage(uint8_t msg_id)
  */
 void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, uint8_t h, uint8_t color)
 {
-	FX::seekData(bitmap);
+//XXX is this correct using SPDR like this?
+	dflash_seek(bitmap);
 
 	unsigned char *buffer = arduboy->getBuffer() + (x * HEIGHT_BYTES);
 
@@ -551,6 +553,7 @@ void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, 
 			buffer += HEIGHT_BYTES;
 			for (uint8_t ph = 0; ph < ((h + 7) / 8); ph++) {
 				uint8_t pixels = SPDR;
+				SPSR;
 				SPDR = 0;
 
 				uint8_t m;
@@ -575,6 +578,7 @@ void Engine::drawBitmap(uint8_t x, uint8_t y, const uint24_t bitmap, uint8_t w, 
 			for (uint8_t ph = 0; ph < h; ph++) {
 				if ((ph % 8) == 0) {
 					pixels = SPDR;
+					SPSR;
 					SPDR = 0;
 				}
 				unsigned char *b = buffer + ((y + ph) / 8);
@@ -609,7 +613,7 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 	for (;;) {
 		/* TODO combination of both for faster single byte reads */
 		/* speed it up by storing the string as image */
-		FX::seekData(message++);
+		dflash_seek(message++);
 		c = FX::readEnd();
 		if (!c)
 			break;
@@ -628,7 +632,7 @@ uint8_t Engine::drawString(uint8_t x, uint8_t page, uint24_t message)
 		else
 			c -= 'W';
 
-		FX::seekData(characters_3x4_flashoffset + (c * 3));
+		dflash_seek(characters_3x4_flashoffset + (c * 3));
 
 		v = FX::readPendingUInt8();
 		buffer[0] = v;
@@ -656,7 +660,7 @@ void Engine::drawNumber(uint8_t x, uint8_t y, uint8_t number)
 
 	while (divider) {
 		digit = number / divider;
-		FX::seekData(characters_3x4_flashoffset + (digit * 3));
+		dflash_seek(characters_3x4_flashoffset + (digit * 3));
 		v = FX::readPendingUInt8();
 
 		buffer[0] |= v;
@@ -1046,7 +1050,7 @@ void Engine::texturesExchangeLeftRight(uint8_t offset)
  */
 void Engine::textureEffectNone(const uint24_t p, uint8_t texX)
 {
-	FX::seekData(p + texX);
+	dflash_seek(p + texX);
 	es.texColumn[4] = FX::readPendingUInt8();
 	es.texColumn[5] = FX::readPendingUInt8();
 	es.texColumn[6] = FX::readPendingUInt8();
@@ -1063,7 +1067,7 @@ void Engine::textureEffectHFlip(const uint24_t p, uint8_t texX)
 
 void Engine::textureEffectInvert(const uint24_t p, uint8_t texX)
 {
-	FX::seekData(p + texX);
+	dflash_seek(p + texX);
 	es.texColumn[4] = ~FX::readPendingUInt8();
 	es.texColumn[5] = ~FX::readPendingUInt8();
 	es.texColumn[6] = ~FX::readPendingUInt8();
@@ -1119,6 +1123,7 @@ void Engine::updateSpecialWalls(void)
 		es.shootingWallCoolDown--;
 
 	if (es.shootingWallCoolDown == 0) {
+		dflash_seek(level1_specialWalls_flashoffset + (es.currentLevel * specialWallsDataAlignment));
 		for (uint8_t p = es.ld.nr_of_sprites; p < (es.ld.nr_of_sprites + es.ld.maxSpecialWalls); p++) {
 			struct sprite *s = &es.ld.dynamic_sprites[p];
 			if (!IS_INACTIVE(s->flags)) {
@@ -2547,7 +2552,7 @@ uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
 #ifndef CONFIG_ASM_OPTIMIZATIONS
 uint8_t Engine::checkIgnoreBlock(uint8_t mapX, uint8_t mapY)
 {
-	FX::seekData(levelFlashOffset + (MAP_WIDTH * mapY + mapX));
+	FX::seekData(es.levelFlashOffset + (MAP_WIDTH * mapY + mapX));
 	return FX::readEnd();
 }
 #endif
@@ -3273,13 +3278,15 @@ void Engine::stopAudioEffect(uint8_t id)
  */
 void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderInfo *re)
 {
-	bitSet(PORTF, 0);
+//	bitSet(PORTF, 0);
 	re->ystart = 0;
 	re->yend = SCREEN_HEIGHT;
 	re->yfirst = SCREEN_HEIGHT;
 	re->ylast = SCREEN_HEIGHT;
 
 	struct sprite _s;
+	uint8_t mask0 = ~0;
+	uint8_t mask1 = ~00;
 
 	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
@@ -3303,9 +3310,12 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 
 		/* TODO diffAngle > 90, improve this */
 		uint16_t angle = diffAngle <= 90 ? 90 - diffAngle: 450 - diffAngle;
-		int16_t h = divS24ByBlocksize((int32_t)pgm_cosByX(angle) * (int16_t)hw_s->distance);
+// IDEA reduce distance to 8 bit (spriteheight*102/7 (instead 6))
+		int16_t h = divS24ByBlocksize((int32_t)pgm_cosByX(angle) * (uint8_t)hw_s->distance);
 
 		if (abs(h) < SPRITE_WIDTH / 2) {
+	bitSet(PORTF, 0);
+
 			int16_t spriteX;
 
 			/******************************************************
@@ -3328,36 +3338,54 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 			 */
 			uint24_t p = hw_s->p;
 
-			FX::seekData(p + texX);
+//-- 12.6us
+bitClear(PORTF, 1);
+			dflash_seek(p+texX);
+			uint16_t t = (uint16_t)hw_s->distance * 9;
 			/* load the sprite mask from flash */
 			es.texColumn[0] = FX::readPendingUInt8();
+			es.texColumn[0] &= mask0;
 			es.texColumn[1] = FX::readPendingUInt8();
+			es.texColumn[1] &= mask1;
+			if (es.texColumn[0] == 0 && es.texColumn[1] == 0) {
+				i = 0xf0;
+				goto nope;
+			}
 			/* load the sprite data from flash */
 			es.texColumn[4] = FX::readPendingUInt8();
+			mask0 &= ~es.texColumn[0];
+			mask1 &= ~es.texColumn[1];
 			es.texColumn[5] = FX::readEnd();
+bitSet(PORTF, 1);
+//-- 10.6us
 
 			/* read scale and px_base from flash (+2 to skip the wallHeight field) */
-			FX::seekData(rayLengths_flashoffset + 2 + hw_s->distance * 9);
+//			dflash_seek(rayLengths_flashoffset + 2 + (uint16_t)hw_s->distance * 9);
+			dflash_seek(rayLengths_flashoffset + 2 + t);
+
 			uint16_t scale = FX::readPendingUInt8();
 			scale |= FX::readPendingUInt8() << 8;
-			uint8_t px_base = FX::readPendingUInt8();
 
 			uint8_t dh = hw_s->spriteDisplayHeight;
 
+bitClear(PORTF, 1);
+//-- 84us
 			/* draw the texture column */
 			if (scale < TEXTURE_SCALE_UP_LIMIT) {
+				/* TODO move this to ScaleUp2 function */
+				uint8_t px_base = FX::readPendingUInt8();
 				drawTextureColumnScaleUp2(hw_s->screenY, dh, px_base, re);
 			} else {
 				drawAll(hw_s->screenY, scale, dh, re);
 			}
-
-			/* deselect cart */
-			FX::readEnd();
+bitSet(PORTF, 1);
+//--
 
 			/*
 			 * shooting will happen in the middle of the screen (64 rays / 2 = 32)
 			 *   items and projectiles will be ignored
 			 */
+//3us
 			if (es.fireCountdown == 0 && !SPRITE_IS_PROJECTILE(s)) {
 				/* TODO weapon effective distance */
 
@@ -3372,9 +3400,14 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 				/* inflict damage to the sprite */
 				doDamageToSprite(hw_s->id, damage);
 			}
+nope:
+			/* deselect cart */
+			FX::readEnd();
+
+	bitClear(PORTF, 0);
 		}
 	}
-	bitClear(PORTF, 0);
+//	bitClear(PORTF, 0);
 }
 
 extern "C" const uint16_t xlateQuadrantToAngle[] __attribute__ ((aligned (8))) = {
@@ -3388,9 +3421,8 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 	 * this distance is calculated so the min display height is 6 pixels,
 	 * anything below is considered too far away
 	 */
-	if (maxRayLength > (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6))
-		maxRayLength = (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 6);
-
+	if (maxRayLength > (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 7))
+		maxRayLength = (SPRITE_HEIGHT * DIST_TO_PROJECTION_PLANE / 7);
 
 	/* rightmost angle of the players current field of view */
 	int16_t fovRight = fovLeft + FIELD_OF_VIEW;
@@ -3447,7 +3479,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 * expected to be too big
 		 */
 		if (dX < SPRITE_MAX_VDISTANCE && dY < SPRITE_MAX_VDISTANCE) {
-			FX::seekData(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
+			dflash_seek(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
 			distance = FX::readPendingUInt8();
 			distance |= FX::readPendingUInt8() << 8;
 			minAngle = FX::readPendingUInt8();
@@ -3612,7 +3644,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		int16_t minAngle;
 
 		if (dX < SPRITE_MAX_VDISTANCE && dY < SPRITE_MAX_VDISTANCE) {
-			FX::seekData(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
+			dflash_seek(distances_flashoffset + (SPRITE_MAX_VDISTANCE * 4 * (uint24_t)dX) + (4 * dY));
 			cs->distance = FX::readPendingUInt8();
 			cs->distance |= FX::readPendingUInt8() << 8;
 			minAngle = FX::readPendingUInt8();
@@ -3742,7 +3774,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 	uint8_t pos = 0;
 	hw_s = &es.hw_sprites[0];
 	while (pos < es.nrOfVisibleSprites) {
-		if (pos == 0 || (hw_s[pos].distance <= hw_s[pos - 1].distance)) {
+		if (pos == 0 || (hw_s[pos].distance >= hw_s[pos - 1].distance)) {
 			pos++;
 		} else {
 			struct heavyweight_sprite tmp;
@@ -3837,7 +3869,8 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		/*
 		 * read height, scale value from flash
 		 */
-		FX::seekData(rayLengths_flashoffset + hw_s->distance * 9);
+		dflash_seek(rayLengths_flashoffset + (uint16_t)hw_s->distance * 9);
+
 		hw_s->spriteDisplayHeight = FX::readPendingUInt8();
 		hw_s->spriteDisplayHeight |= FX::readPendingUInt8() << 8;
 		uint16_t scale = FX::readPendingUInt8();
@@ -4687,7 +4720,7 @@ bitSet(PORTF, 1);
 			 *   (this is about ~1.2ms of the drawing time)
 			 *   sky+floor is a 128x64px picture
 			 */
-			FX::seekData(background_flashoffset + ray * 8);
+			dflash_seek(background_flashoffset + ray * 8);
 			/* copy the sky */
 			es.screenColumn[0] = FX::readPendingUInt8();
 			es.screenColumn[1] = FX::readPendingUInt8();
@@ -4746,7 +4779,7 @@ bitSet(PORTF, 1);
 		 * wallHeight max = 6528 / 10 = 652
 		 */
 #ifdef CONFIG_LOD
-		FX::seekData(rayLengths_flashoffset + rayLength * 9);
+		dflash_seek(rayLengths_flashoffset + rayLength * 9);
 		uint16_t wallHeight = FX::readPendingUInt8();
 		wallHeight |= FX::readPendingUInt8() << 8;
 		uint16_t scale = FX::readPendingUInt8();
@@ -4792,9 +4825,9 @@ bitSet(PORTF, 1);
 
 		/* skip wallHeight, scale and px_base */
 #ifdef CONFIG_LOD
-		FX::seekData(rayLengths_flashoffset + rayLength * 9 + 5);
+		dflash_seek(rayLengths_flashoffset + rayLength * 9 + 5);
 #else
-		FX::seekData(rayLengths_flashoffset + rayLength * 9);
+		dflash_seek(rayLengths_flashoffset + rayLength * 9);
 		uint16_t wallHeight = FX::readPendingUInt8();
 		wallHeight |= FX::readPendingUInt8() << 8;
 		uint16_t scale = FX::readPendingUInt8();

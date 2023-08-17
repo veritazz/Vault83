@@ -90,8 +90,8 @@ struct heavyweight_sprite {
 	int16_t spriteDisplayHeight; // sprite height in pixel that will be drawn
 	uint16_t spriteAngle;        // angle the player is looking at the sprite
 	uint8_t id;
-	uint16_t distance;
-}; /* = 10 bytes */
+	uint8_t distance;
+}; /* = 9 bytes */
 
 /* size = 6 bytes */
 struct door {
