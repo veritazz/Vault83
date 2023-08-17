@@ -36,3 +36,4 @@
 *.eep
 
 .pioenvs
+src/asm_offsets.h
