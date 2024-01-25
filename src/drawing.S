@@ -145,7 +145,7 @@ _draw_0_use_2_bytes:
 ;
 ; parameters passed
 ;
-; r25:r24 = screenY(16bit), r23:r22 = scale, r21:r20 = wallHeight, r19:r18 = renderInfo
+; r25:r24 = screenY(16bit), r23:r22 = scale, r21:r20 = wallHeight
 drawAll:
 	push r12              ; (2)
 	push r13              ; (2)

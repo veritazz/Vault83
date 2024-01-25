@@ -264,7 +264,7 @@ private:
 	void drawNumber(uint8_t x, uint8_t y, uint8_t number);
 	void setStatusMessage(uint8_t msg_id);
 	void ultraDraw(unsigned char *buffer, uint8_t drawCase);
-	void drawNoTexture(int16_t screenY, uint16_t wallHeight, struct renderInfo *re);
+	void drawNoTexture(int16_t screenY, uint16_t wallHeight);
 
 	uint8_t movingWallCheckHitHorizontal(uint8_t mapX, uint16_t a);
 	uint8_t movingWallCheckHitVertical(uint8_t mapX, uint16_t a);

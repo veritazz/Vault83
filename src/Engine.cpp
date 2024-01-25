@@ -3090,7 +3090,7 @@ uint8_t Engine::move(uint16_t viewAngle, uint8_t direction, uint16_t *x, uint16_
  *
  * maybe use some dithering laster instead of a solid column
  */
-void Engine::drawNoTexture(int16_t screenY, uint16_t wallHeight, struct renderInfo *re)
+void Engine::drawNoTexture(int16_t screenY, uint16_t wallHeight)
 {
 	uint8_t bit;
 	unsigned char *buffer = es.screenColumn + (uint8_t)screenY / 8;
@@ -3371,13 +3371,17 @@ bitSet(PORTF, 1);
 bitClear(PORTF, 1);
 //-- 84us
 			/* draw the texture column */
+#if 0
 			if (scale < TEXTURE_SCALE_UP_LIMIT) {
 				/* TODO move this to ScaleUp2 function */
 				uint8_t px_base = FX::readPendingUInt8();
 				drawTextureColumnScaleUp2(hw_s->screenY, dh, px_base, re);
 			} else {
-				drawAll(hw_s->screenY, scale, dh, re);
+#endif
+				drawAll(hw_s->screenY, scale, dh);
+#if 0
 			}
+#endif
 bitSet(PORTF, 1);
 //--
 
@@ -4864,13 +4868,15 @@ bitSet(PORTF, 1);
 		 * as details are anyway not visible at this resolution
 		 */
 		if (wallHeight >= MIN_WALL_HEIGHT) {
+#if 0
 			if (scale < TEXTURE_SCALE_UP_LIMIT)
 				drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
 			else
-				drawAll(screenY, scale, wallHeight, re);
+#endif
+				drawAll(screenY, scale, wallHeight);
 		} else {
 
-			drawNoTexture(screenY, wallHeight, re);
+			drawNoTexture(screenY, wallHeight);
 		}
 		/* deselect cart */
 		FX::readEnd();
