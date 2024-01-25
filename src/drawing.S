@@ -145,171 +145,133 @@ _draw_0_use_2_bytes:
 ;
 ; parameters passed
 ;
-; r25:r24 = screenY, r23:r22 = scale, r21:r20 = wallHeight, r19:r18 = renderInfo
+; r25:r24 = screenY(16bit), r23:r22 = scale, r21:r20 = wallHeight, r19:r18 = renderInfo
 drawAll:
-	push r9
-	push r10
-	push r11
-	push r12
-	push r13
-	push r16
-	push r17
-	push r28
-	push r29
+	push r12              ; (2)
+	push r13              ; (2)
+	push r16              ; (2)
+	push r17              ; (2)
+	push r28              ; (2)
+	push r29              ; (2)
 
-	clt                   ; (1) clear T flag
+	eor r16, r16          ; (1) set texY lo to zero
+	eor r17, r17          ; (1) set texY hi to zero
 
-	movw r30, r18
-	ldd r27, Z + offsetof_renderInfo_ystart
-	ldd r26, Z + offsetof_renderInfo_yend
-
-	sub r26, r27
-
-	eor r16, r16          ; set texY hi to zero
-	eor r17, r17          ; set texY lo to zero
-
-	tst r25               ; test if screenY is < 0
-	brpl 1f 
+	;
+	; assumption that screenY is >= -255
+	;
+	tst r25               ; (1) test if screenY is < 0
+	brpl 1f               ; (1/2)
 	; screenY is < 0
 	neg r24               ; (1) abs((uint8_t)screenY)
+
+	; reduce wallHeight by screenY
+	sub r20, r24          ; (1) wh - screenY
+	sbc r21, r1           ; (1) ...
+
 	mul r24, r22          ; (2) multiply lsb of scale with abs(screenY)
 	movw r16, r0          ; (1) move r1:r0 result to r17:r16
 	mul r24, r23          ; (2) multiply msb of scale with abs(screenY)
 	add r17, r0           ; (1) add lsb of result to msb of previous result
+
+
 	eor r24, r24          ; (1) set nScreenY = 0
+	eor r1, r1            ; (1) r1 = 0
 	; -------------------------------------------------
 1:      ; screenY is >= 0
 	; -------------------------------------------------
+	; a = SCREEN_HEIGHT - yscreen
+	ldi r26, (64-8)       ; (1) load SCREEN_HEIGHT into r26
+	sub r26, r24          ; (1) a = SCREEN_HEIGHT - yscreen
 
-	cp r27, r24           ; (1) check if ystart < yscreen
-	brlo 2f               ; (1/2) if lower, do nothing
-	mov r0, r24           ; (1) mov yscreen to r0
-	mov r24, r27          ; (1) move ystart to r24
-	sub r27, r0           ; (1) ystart - yscreen = rest
-	sub r20, r27          ; (1) wallheight - rest (remaining wallheight)
-	;sub r26, r27
-	; -------------------------------------------------
-2:      ; ystart <= yscreen
-	; -------------------------------------------------
-	cp r20, r26           ; (1) check if wallheight < yend
-	brlo 1f               ; (1/2) skip if lowe
-	mov r20, r26          ; (1) wallheight = yend
+	; if wallHeight > a: wallHeight = a
+	cp r26, r20           ; (1) a - wh
+	cpc r1, r21           ; (1)
+	brsh 1f               ; (1/2)
 
+	mov r20, r26          ; (1) wh = a, r21 don't care
 
-; TODO check if r20 is negative
 1:
-	; -------------------------------------------------
-	; add skipped pixels to texY
-	; -------------------------------------------------
-	mul r27, r22          ; (2) mul lsb of scale with rest
-	add r16, r0           ; (1) add lsb of result to lsb of texY
-	adc r17, r1           ; (1) add msb of result to msb of texY
-	mul r27, r23          ; (2) mul msb of scale with rest
-	add r17, r0           ; (1) add lsb of result to msb of texY
-
-	eor r1, r1            ; (1) clear r1
-
-
 
 	; buffer = es.screenColumn + nScreenY / 8;
-	ldi r26, lo8(es + offsetof_engineState_screenColumn)
-	ldi r27, hi8(es + offsetof_engineState_screenColumn)
-	mov r0, r24           ; r0 = nScreenY
-	lsr r0                ; nScreenY / 8
-	lsr r0                ; ...
-	lsr r0                ; ...
-	add r26, r0           ; adc not required as screenColumn is aligned to an 8 byte boundary
+	ldi r26, lo8(es + offsetof_engineState_screenColumn)    ; (2)
+	ldi r27, hi8(es + offsetof_engineState_screenColumn)    ; (2)
+	mov r0, r24           ; (1) r0 = nScreenY
+	lsr r0                ; (1) nScreenY / 8
+	lsr r0                ; (1) ...
+	lsr r0                ; (1) ...
+	add r26, r0           ; (1)
+			      ; adc not required as screenColumn is aligned to an 8 byte boundary
 
 
 	; /* bit position on the screen */
 	; bit = bitshift_left[nScreenY % 8];
-	ldi r30, lo8(bitshift_left)
-	ldi r31, hi8(bitshift_left)
-	mov r25, r24          ; move nScreenY to r25
-	andi r25, 0x07        ; nScreenY % 8
-	add r30, r25          ; bitshift_left + (nScreenY % 8), no adc required (aligend to 8 byte)
-	ld r13, Z             ; load from (bitshift_left + (nScreenY % 8))
-			      ; r13 = bit
+	ldi r30, lo8(bitshift_left)   ; (2)
+	ldi r31, hi8(bitshift_left)   ; (2)
+	mov r25, r24          ; (1) move nScreenY to r25
+	andi r25, 0x07        ; (1) nScreenY % 8
+	add r30, r25          ; (1) bitshift_left + (nScreenY % 8), no adc required (aligend to 8 byte)
+	ld r13, Z             ; (2) load from (bitshift_left + (nScreenY % 8))
+			      ;     r13 = bit
 
-	mov r25, r17          ; texOffsetOld = hi8(texY) & 0xc0
-	andi r25, 0xc0        ; r25 is texOffsetOld
+	mov r25, r17          ; (1) texOffsetOld = hi8(texY) & 0xc0
+	andi r25, 0xc0        ; (1) r25 is texOffsetOld
 	; uint8_t texOffset = (texOffsetOld >> (TEXTURE_SCALE_SHIFT + 3));
-	mov r0, r25           ; r0 is texOffsetOld (hi8(texY) & 0xc0)
-	swap r0               ; r0 >> 6 (upper 2 bits moved to lower 2 bits)
-	lsr r0                ; ...
-	lsr r0                ; ...
+	mov r0, r25           ; (1) r0 is texOffsetOld (hi8(texY) & 0xc0)
+	swap r0               ; (1) r0 >> 6 (upper 2 bits moved to lower 2 bits)
+	lsr r0                ; (1) ...
+	lsr r0                ; (1) ...
 
 	; not required	andi r0, 0x3
 	; // texoffset can be added to textureptr without adc (pointer is aligned to 8 byte)
 	; uint8_t texColumn = texturePtr[texOffset];
 	;
-	ldi r28, lo8(es + offsetof_engineState_texColumn)
-	ldi r29, hi8(es + offsetof_engineState_texColumn)
+	ldi r28, lo8(es + offsetof_engineState_texColumn)      ; (2)
+	ldi r29, hi8(es + offsetof_engineState_texColumn)      ; (2)
 	add r28, r0            ; (1) add texOffset
 	ldd r0, Y+4            ; (2) load texture byte
 	ld r12, Y              ; (2) load mask byte
 
-	movw r10, r18
+	eor r18, r18           ; (1) mask = 0 (mask to draw black pixel)
+	eor r19, r19           ; (1) v = 0 (mask to draw white pixel)
 
-	eor r18, r18          ; mask = 0 (mask to draw black pixel)
-	eor r19, r19          ; v = 0 (mask to draw white pixel)
-
+	; ------------------------------------------
 	; while (wallHeight--)
 	; ...
 1:
 	; /* bit position on the texture */
 	; uint8_t bit_pos = (texY >> TEXTURE_SCALE_SHIFT) % 8;
-	mov r21, r17          ; r21 = hi8(texY)
-	lsl r21               ; (r21 >> 3) & 0x7
-	swap r21              ; ...
-	andi r21, 0x7         ; ... (r21 is bit_pos)
+	mov r21, r17          ; (1) r21 = hi8(texY)
+	lsl r21               ; (1) (r21 >> 3) & 0x7
+	swap r21              ; (1) ...
+	andi r21, 0x7         ; (1) ... (r21 is bit_pos)
 	; /* read texture bit and check texColumn for this bit */
-	ldi r30, lo8(bitshift_left)  ; r31 (hi8(bitshift_left) is still valid
-	add r30, r21          ; add bit_pos (adc not required as bitshift_left is aligned to 8 byte)
-	ld r30, Z             ; bitshift_left[bit_pos]
-	push r30
-	and r30, r12          ; mask & bitshift_left[bit_pos]
-	pop r30
-	breq 3f               ; skip if mask says no
-	and r30, r0           ; texColumn & bitshift_left[bit_pos]
-	breq 2f               ; if zero (black)
-	or r19, r13           ; v |= bit (white pixel)
+	ldi r30, lo8(bitshift_left)  ; (2) r31 (hi8(bitshift_left) is still valid
+	add r30, r21          ; (1) add bit_pos (adc not required as bitshift_left is aligned to 8 byte)
+	ld r30, Z             ; (2) bitshift_left[bit_pos]
+	mov r21, r30          ; (1)
+	and r30, r12          ; (1) mask & bitshift_left[bit_pos]
+	breq 3f               ; (1/2) skip if mask says no
+	and r21, r0           ; (1) texColumn & bitshift_left[bit_pos]
+	breq 2f               ; (1/2) if zero (black)
+	or r19, r13           ; (1) v |= bit (white pixel)
 2:
-	or r18, r13           ; mask |= bit (black pixel)
-	;
-	; either white or black pixel will be drawn here,
-	; so remember y of first pixel and y of last pixel
-	;
-	;
-	; if T is clear then remember this as the first y that a pixel was drawn to
-	;
-	brbs 6, 3f
-	set
-;	push r31
-;	movw r30, r10
-;	std Z+2, r24
-;	pop r31
+	or r18, r13           ; (1) mask |= bit (black pixel)
 3:
-	;
-	; remember last screenY (nscreenY + 1)
-	;
-	mov r9, r24     ; (1) load nscreenY into register
-	inc r9          ; (1)
-
-	lsl r13               ; bit <<= 1
-	brne  4f              ; branch if not zero (still a bit set)
-	ld r30, X             ; *buffer
-	com r18               ; ~mask
-	and r30, r18          ; *buffer & ~mask
-	or r30, r19           ; *buffer++ | v
-	st X+, r30            ; ...
-	eor r18, r18          ; mask = 0
-	eor r19, r19          ; v = 0
-	inc r13               ; bit = 1
+	lsl r13               ; (1) bit <<= 1
+	brne  4f              ; (1/2) branch if not zero (still a bit set) TODO optimize for not jumping
+	ld r30, X             ; (2) *buffer
+	com r18               ; (1) ~mask
+	and r30, r18          ; (1) *buffer & ~mask
+	or r30, r19           ; (1) *buffer++ | v
+	st X+, r30            ; (2) ...
+	eor r18, r18          ; (1) mask = 0
+	eor r19, r19          ; (1) v = 0
+	inc r13               ; (1) bit = 1
 4:
-	add r16, r22          ; texY += scale
-	adc r17, r1           ; ...
-	add r17, r23          ; ...
+	add r16, r22          ; (1) texY += scale
+	adc r17, r1           ; (1) ...
+	add r17, r23          ; (1) ...
 
 	; // texY(high) andi 0xc0
 	; texY(high) = r17
@@ -322,46 +284,42 @@ drawAll:
 	;	texColumn = texturePtr[texOffset];
 	; }
 	; compare the higher 2 bits of hi8(texY) and texOffsetOld (shift is 11+3, so only the upper 2 bits count)
-	mov r30, r17          ; r30 = hi8(texY)
-	andi r30, 0xc0        ; r30 &= 0xc0
-	cp r30, r25           ; compare texY (high) and texOffsetOld
-	breq  5f              ; if equal, texColumn is still ok
-			      ; else new texColumn needs to be loaded
-	mov r0, r30           ; r0 = hi8(texY) & 0xc0
-	sub r0, r25           ; sub texOffsetOld from r0
-	mov r25, r30          ; texOffsetOld = hi8(texY)
-	swap r0               ; r0 >>= 6
-	lsr r0                ; ...
-	lsr r0                ; r0 = texOffset
+	mov r30, r17          ; (1) r30 = hi8(texY)
+	andi r30, 0xc0        ; (1) r30 &= 0xc0
+	cp r30, r25           ; (1) compare texY (high) and texOffsetOld
+	breq  5f              ; (1/2) if equal, texColumn is still ok  TODO optimize for not jumping
+			      ;       else new texColumn needs to be loaded
+	mov r0, r30           ; (1) r0 = hi8(texY) & 0xc0
+	sub r0, r25           ; (1) sub texOffsetOld from r0
+	mov r25, r30          ; (1) texOffsetOld = hi8(texY)
+	swap r0               ; (1) r0 >>= 6
+	lsr r0                ; (1) ...
+	lsr r0                ; (1) r0 = texOffset
 
-	add r28, r0           ; add to lo8(texturePtr)
+	add r28, r0           ; (1) add to lo8(texturePtr)
+			      ;     no adc because texturePtr is 8 byte aligned
 	ldd r0, Y+4           ; (2) load next texture byte
 	ld r12, Y             ; (2) load next mask byte
 5:
-	dec r20               ; decrement wallHeight
-	brne 1b               ; repeat if not zero
+	dec r20               ; (1) decrement wallHeight
+	brne 1b               ; (1/2) repeat if not zero
+	; ------------------------------------------
 
 	; /* draw remaining pixels if any */
-	ld r30, X             ; *buffer
-	com r18               ; ~mask
-	and r30, r18          ; *buffer & ~mask
-	or r30, r19           ; *buffer++ | v
-	st X, r30             ; ...
+	ld r30, X             ; (2) *buffer
+	com r18               ; (1) ~mask
+	and r30, r18          ; (1) *buffer & ~mask
+	or r30, r19           ; (1) *buffer++ | v
+	st X, r30             ; (2) ...
 
-;	movw r30, r10
-;	std Z+3, r9
+	pop r29               ; (2)
+	pop r28               ; (2)
+	pop r17               ; (2)
+	pop r16               ; (2)
+	pop r13               ; (2)
+	pop r12               ; (2)
 
-	pop r29
-	pop r28
-	pop r17
-	pop r16
-	pop r13
-	pop r12
-	pop r11
-	pop r10
-	pop r9
-
-	ret
+	ret                   ; (5)
 
 ; free to use
 ;   r18:r27
@@ -465,6 +423,8 @@ _screenY_positive:
 	mov r8, r24                ; (1) current screenY becomes tmp_px
 
 	;
+	; load texel mask
+	;
 	; r9 = texels (current texture pixels)
 	;      texels = es.texColumn[texY / 8];
 	;
@@ -513,8 +473,8 @@ _screenY_positive:
 	rjmp _skip       ; (2) jump to skip code
 
 _drawing_loop:
-	mov r0, r9       ; (1) copy texels as "and" will modify Rd
-	and r0, r10      ; (1) check if texel need to be drawn (texels & texShift)
+	mov r0, r9       ; (1) copy texel-mask as "and" will modify Rd
+	and r0, r10      ; (1) check if texel need to be drawn (texel-mask & texShift)
 	brne 2f          ; (1/2) branch to draw (3 = no draw, 2 = draw)
 	rjmp 1f          ; (2) branch to no draw
 2:
