@@ -66,7 +66,7 @@ struct sprite {
 			  * bit[0]  : 0 = active, 1 = inactive
 			  * bit[2:1]: unused
 			  * bit[6:3]: type
-			  * bit[7]  : 1 = projectile, 0 = else
+			  * bit[7]  : 1 = non shootable, 0 = else
 			  */
 } /* = 4 bytes */;
 
@@ -89,6 +89,7 @@ struct heavyweight_sprite {
 	int16_t screenY;             // screen y coordinate of the sprite (where drawing will start)
 	int16_t spriteDisplayHeight; // sprite height in pixel that will be drawn
 	uint16_t spriteAngle;        // angle the player is looking at the sprite
+				     // TODO only 9 bits used, 7 are free!
 	uint8_t id;
 	uint8_t distance;
 }; /* = 9 bytes */
@@ -211,7 +212,8 @@ struct audio_effect {
 
 
 struct engineState {
-	uint8_t screenColumn[8] __attribute__ ((aligned (8))); /* buffer for one rendered screen column */
+	/* buffer for one rendered screen column (8 bytes) + stencil buffer (8 bytes) */
+	uint8_t screenColumn[16] __attribute__ ((aligned (8)));
 	uint8_t texColumn[8] __attribute__ ((aligned (8)));
 
 	uint8_t movementSpeedDuration;      /* timeout in frames until movement stops */

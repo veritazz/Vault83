@@ -1,9 +1,10 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import glob
 import struct
 import numpy
-import getopt, sys, json
+import sys, json
+import argparse
 from PIL import Image
 from os.path import basename
 from collections import OrderedDict
@@ -13,11 +14,10 @@ def save_binary_data(f_data, f, width, height, padding=True):
 	# pad to next 256byte boundary?
 	size = len(f_data)
 
-	height = int((height + 7) / 8)
+	height = (height + 7) // 8
 
-	for w in range(width):
-		for h in range(height):
-			f.write(struct.pack('<B', f_data[h*width+w]))
+	for b in range(size):
+		f.write(struct.pack('<B', f_data[b]))
 
 	pad = 256 - (size % 256)
 	if pad != 256 and padding:
@@ -28,18 +28,43 @@ def save_binary_data(f_data, f, width, height, padding=True):
 	return size + pad
 
 def convert_image(width, height, data, color):
-	size = int((width * ((height + 7) / 8 * 8)) / 8)
+	# calculation size of resulting image in bytes
+	size = (width * ((height + 7) // 8 * 8)) // 8
 	f_data = []
 	for b in range(size):
 		f_data.append(0)
-	rows = int((height + 7) / 8)
+	#
+	# Input image is a linear list of elements, each representing 1 pixel.
+	# The input data it organized width wise, e.g. each 'width' elements
+	# represent one row of the input image.
+	#
+	# Linear data organized in rows:
+	#    [ r1 ][ r2 ][ r3 ][ r4 ]
+	#
+	# Rows logically organized as image:
+	#   [ r1 ]
+	#   [ r2 ]
+	#   [ r3 ]
+	#   [ r4 ]
+	#
+
+	#
+	# each byte of the output data can hold 8 rows (8 pixel)
+	# calculate how many rows fit into the height of the image
+	#
+	byte_rows = (height + 7) // 8
 	o = 0
-	for row in range(rows):
-		for w in range(width):
+
+	#
+	# this loop converts the input data from row-major to column-major
+	# representation
+	#
+	for w in range(width):
+		for byte_row in range(byte_rows):
 			for h in range(8):
-				if (h + row * 8) >= height:
+				if (h + byte_row * 8) >= height:
 					break
-				c = data[(h + row * 8) * width + w]
+				c = data[(h + byte_row * 8) * width + w]
 				if c > color:
 					f_data[o] = f_data[o] | (0x1 << h)
 			o += 1
@@ -79,25 +104,35 @@ images = OrderedDict()
 if __name__ == "__main__":
 	flashOffset = 0
 	total_size = 0
-	artifacts_dir = sys.argv[1] + "/"
 
-	for json_filename in sorted(glob.glob(artifacts_dir + "*.json")):
+	parser = argparse.ArgumentParser()
+	parser.add_argument("artifacts_dir", help="path to the artifacts")
+	parser.add_argument("-i", "--interleave", type=int, choices=[2], default=1, help="increase output verbosity")
+	args = parser.parse_args()
+
+	args.artifacts_dir += "/"
+
+	for json_filename in sorted(glob.glob(args.artifacts_dir + "*.json")):
 		img_name = basename(json_filename).split('.')[0].replace('-', '_')
 		jdata = None
 		with open(json_filename) as jdatafile:
 			jdata = json.load(jdatafile, object_pairs_hook=OrderedDict)
 		if not jdata:
 			continue
+
 		filename, frames, imageWidth, imageHeight, frameWidth, frameHeight = decode_json(jdata)
 
-		im = Image.open(filename)
+		frameHeight *= args.interleave
+		frames //= args.interleave
+
+		im = Image.open(args.artifacts_dir + filename)
 		palette= im.getpalette()
 		fdata = list(im.getdata())
 
-		# create array of height cells each width elements
+		# create array of 'height' rows each with 'width' elements [ [width elemets] * height_times ]
 		a = numpy.reshape(numpy.asarray(fdata), (imageHeight, imageWidth))
 
-		size = ((imageHeight + 7) / 8) * imageWidth
+		size = ((imageHeight + 7) // 8) * imageWidth
 
 		color = 0
 		print("%-40s" % (basename(filename)), end=' ')
@@ -119,6 +154,7 @@ if __name__ == "__main__":
 		for frame_nr in range(frames):
 			foffset = frame_nr * frameWidth
 			# copy each image and reshape to linear list
+			# select row and number of rows by slicing, then convert to linear list
 			img = numpy.reshape(a[frame_nr * frameHeight: frame_nr * frameHeight + frameHeight], frameWidth*frameHeight).tolist()
 			images[img_name]["raw"][frame_nr] = img
 			frame = convert_image(frameWidth, frameHeight, img, color)
@@ -136,7 +172,6 @@ if __name__ == "__main__":
 
 		binFileName = v["info"][0][:-4] + ".bin"
 		txtFileName = v["info"][0][:-4] + ".txt"
-
 		with open(binFileName, 'wb') as binFile, open(txtFileName, 'w') as txtFile:
 			for k2, v2 in v["raw"].items():
 				# save textual image information

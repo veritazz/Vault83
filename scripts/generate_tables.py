@@ -175,8 +175,7 @@ if __name__ == "__main__":
 		#
 		# write out binary data
 		#
-		# table is indexed by wallHeight -> [scale, px_base, [4 byte pattern]]
-		# table is indexed by raylength -> [wallHeight, scale, px_base, [4 byte pattern]]
+		# table is indexed by raylength -> [wallHeight(2), scale(2), px_base(1), [4 byte pattern]]
 		#
 		with open("rayLengths.bin", 'wb') as bfile:
 			wallHeight = blockSize * distanceToProjectionPlane
@@ -215,7 +214,6 @@ if __name__ == "__main__":
 				bfile.write(struct.pack('<H', round(whf))) # wallheight
 				bfile.write(struct.pack('<H', scale)) # scale
 				bfile.write(struct.pack('<B', px_base)) # px_base
-
 				bfile.write(struct.pack('<I', x))
 				#print("%3.3u wh %2.2u s %2.2u px %u p %4.4x" % (rl, round(whf), scale, px_base, x))
 		print("done")

@@ -1,3 +1,6 @@
+;
+; vim: syntax=avr
+;
 #include "map.h"
 #include "asm_offsets.h"
 #include "leveldata.h"

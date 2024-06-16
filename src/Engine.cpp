@@ -3276,17 +3276,24 @@ void Engine::stopAudioEffect(uint8_t id)
 /*
  * drawing loop for visible sprites
  */
-void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderInfo *re)
+void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft)
 {
 //	bitSet(PORTF, 0);
-	re->ystart = 0;
-	re->yend = SCREEN_HEIGHT;
-	re->yfirst = SCREEN_HEIGHT;
-	re->ylast = SCREEN_HEIGHT;
+
+// XXX remove this
+struct renderInfo re;
+re.ystart = 0;
+re.yend = SCREEN_HEIGHT;
+re.yfirst = 0;
+re.ylast = SCREEN_HEIGHT;
+
 
 	struct sprite _s;
 	uint8_t mask0 = ~0;
-	uint8_t mask1 = ~00;
+	uint8_t mask1 = ~0;
+
+	/* clear stencilbuffer */
+	memset(&es.screenColumn[8], 0x00, 8);
 
 	for (uint8_t i = 0; i < es.nrOfVisibleSprites; i++) {
 		struct heavyweight_sprite *hw_s = &es.hw_sprites[i];
@@ -3328,10 +3335,12 @@ void Engine::handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderIn
 			spriteX = ((int16_t)SPRITE_WIDTH / 2) + h;
 
 			/*
-			 * find x coordinate of the texture, height of sprites is 16 pixel
-			 * so multiply by sprite height in bytes (image data is stored columnwise)
+			 * find x coordinate of the texture, height of sprites is 16 pixel and
+			 * each column contains one column of mask bits and one column of
+			 * sprite bits so multiply by sprite height in bytes times two
+			 * (image data is stored columnwise)
 			 */
-			uint8_t texX = spriteX * SPRITE_HEIGHT_BYTES;
+			uint8_t texX = spriteX * SPRITE_HEIGHT_BYTES * 2;
 
 			/*
 			 * draw vertical slice of the texture
@@ -3344,18 +3353,30 @@ bitClear(PORTF, 1);
 			uint16_t t = (uint16_t)hw_s->distance * 9;
 			/* load the sprite mask from flash */
 			es.texColumn[0] = FX::readPendingUInt8();
+			/* update current mask based on the previous masks */
+			// TODO this only works if both sprites are at the same yoffset
 			es.texColumn[0] &= mask0;
 			es.texColumn[1] = FX::readPendingUInt8();
+			/* update current mask based on the previous masks */
+			// TODO this only works if both sprites are at the same yoffset
 			es.texColumn[1] &= mask1;
+			/*
+			 * if both masks are zero then there is nothing more
+			 * to do for this column
+			 */
 			if (es.texColumn[0] == 0 && es.texColumn[1] == 0) {
-				i = 0xf0;
-				goto nope;
+				/* deselect cart */
+				FX::readEnd();
+
+bitClear(PORTF, 0);
+				break;
 			}
+
 			/* load the sprite data from flash */
 			es.texColumn[4] = FX::readPendingUInt8();
+			es.texColumn[5] = FX::readEnd();
 			mask0 &= ~es.texColumn[0];
 			mask1 &= ~es.texColumn[1];
-			es.texColumn[5] = FX::readEnd();
 bitSet(PORTF, 1);
 //-- 10.6us
 
@@ -3366,20 +3387,20 @@ bitSet(PORTF, 1);
 			uint16_t scale = FX::readPendingUInt8();
 			scale |= FX::readPendingUInt8() << 8;
 
-			uint8_t dh = hw_s->spriteDisplayHeight;
+			uint16_t dh = hw_s->spriteDisplayHeight;
 
 bitClear(PORTF, 1);
 //-- 84us
 			/* draw the texture column */
-#if 0
+#if 1
 			if (scale < TEXTURE_SCALE_UP_LIMIT) {
 				/* TODO move this to ScaleUp2 function */
 				uint8_t px_base = FX::readPendingUInt8();
-				drawTextureColumnScaleUp2(hw_s->screenY, dh, px_base, re);
+				drawTextureColumnScaleUp2(hw_s->screenY, dh, px_base, &re);
 			} else {
 #endif
 				drawAll(hw_s->screenY, scale, dh);
-#if 0
+#if 1
 			}
 #endif
 bitSet(PORTF, 1);
@@ -3391,6 +3412,7 @@ bitSet(PORTF, 1);
 			 */
 //3us
 			if (es.fireCountdown == 0 && !SPRITE_IS_PROJECTILE(s)) {
+// XXX for static sprites just remove it from screen? or do animation, NO health check!
 				/* TODO weapon effective distance */
 
 				/* if player shoots, enemy will follow and eventually attack */
@@ -3404,7 +3426,7 @@ bitSet(PORTF, 1);
 				/* inflict damage to the sprite */
 				doDamageToSprite(hw_s->id, damage);
 			}
-nope:
+
 			/* deselect cart */
 			FX::readEnd();
 
@@ -3807,9 +3829,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			_s.flags = es.ld.static_sprites[hw_s->id - SPRITES_START];
 		}
 
-		/* add offset to skip mask */
-		hw_s->p += SPRITE_SIZE;
-
+// XXX SPRITE_IS_PROJECTILE check is not correct for static sprites, should use (hw_s->id<SPRITES_START) check here
 		/*
 		 * calculate the side the player is looking at the sprite
 		 *   only do this if sprite is visible and not a simple one (e.g. item)
@@ -3823,7 +3843,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 			 * angles the player will have to look at the
 			 * sprite in order to see the different sides
 			 *
-			 * 225 - (255 + 90) = front
+			 * 225 - (225 + 90) = front
 			 * 315 - (315 + 90) = right
 			 *  45 - ( 45 + 90) = back
 			 * 135 - (135 + 90) = left
@@ -3849,7 +3869,9 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 					r -= 360;
 				if ((uint16_t)hw_s->spriteAngle >= l && (uint16_t)hw_s->spriteAngle < r) {
 					/* add offset for the correct side */
-					hw_s->p += SPRITE_SIZE * side;
+// XXX fix this (more graphics)
+// it should be SPRITE_SIZE * 2 * side (SPRITE_SIZE * 2 because there is mask and data
+//					hw_s->p += SPRITE_SIZE * side;
 					break;
 				}
 			}
@@ -3891,8 +3913,8 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		 * when sprite is outside of visible area
 		 *
 		 */
-		hw_s->screenY = (uint16_t)((int16_t)(SCREEN_HEIGHT - hw_s->spriteDisplayHeight) / 2 + vSpriteMove) + screenYStart;
-
+		hw_s->screenY = (int16_t)((int16_t)(SCREEN_HEIGHT - hw_s->spriteDisplayHeight) / 2 + vSpriteMove) + screenYStart;
+#if 0
 		/*
 		 * if the displayheight plus the screen y offset exceeds the
 		 * screenheight then we need to clip it
@@ -3905,6 +3927,7 @@ void Engine::updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxR
 		if ((hw_s->spriteDisplayHeight + screenY) > SCREEN_HEIGHT) {
 			hw_s->spriteDisplayHeight = SCREEN_HEIGHT - screenY;
 		}
+#endif
 	}
 }
 
@@ -4712,13 +4735,18 @@ bitSet(PORTF, 1);
 		 * memory that ri is pointing to is free here until the end of the loop
 		 * so use it for some rendering information meanwhile
 		 */
+// XXX remove this
 		struct renderInfo *re = (struct renderInfo *)ri;
 		re->ystart = 0;
 		re->yend = SCREEN_HEIGHT;
+		re->yfirst = 0;
+		re->ylast = SCREEN_HEIGHT;
 
 		ri++;
-
+// clear screenColumn
+memset(es.screenColumn, 0, 8);
 		if (rayLength >= DIST_TO_PROJECTION_PLANE) {
+#if 1
 			/* TODO:
 			 *   simulate load of sky and floor from flash
 			 *   (this is about ~1.2ms of the drawing time)
@@ -4735,6 +4763,7 @@ bitSet(PORTF, 1);
 			es.screenColumn[5] = FX::readPendingUInt8();
 			es.screenColumn[6] = FX::readPendingUInt8();
 			es.screenColumn[7] = FX::readEnd();
+#endif
 		}
 
 		if (tile == V_M_W) {
@@ -4810,8 +4839,10 @@ bitSet(PORTF, 1);
 		/* TODO read effect id from table */
 		uint8_t effect = textureEffects[block_id] & 0xf;
 
-		// TODO remove this for walls
+		/* enable all pixels in the mask for walls */
 		memset(es.texColumn, 0xff, 4);
+		/* clear stencil buffer */
+		memset(&es.screenColumn[8], 0x00, 8);
 
 		if (tile == FOG) {
 			memset(&es.texColumn[4], 0x00, 4);
@@ -4822,10 +4853,6 @@ bitSet(PORTF, 1);
 			else if (effect == 1)
 				textureEffectRotateLeft(p, texX);
 		}
-#ifdef RAY32_DEBUG
-		if (ray == 32)
-			memset(es.texColumn, 0xff, 4);
-#endif
 
 		/* skip wallHeight, scale and px_base */
 #ifdef CONFIG_LOD
@@ -4868,14 +4895,13 @@ bitSet(PORTF, 1);
 		 * as details are anyway not visible at this resolution
 		 */
 		if (wallHeight >= MIN_WALL_HEIGHT) {
-#if 0
+#if 1
 			if (scale < TEXTURE_SCALE_UP_LIMIT)
 				drawTextureColumnScaleUp2(screenY, wallHeight, px_base, re);
 			else
 #endif
 				drawAll(screenY, scale, wallHeight);
 		} else {
-
 			drawNoTexture(screenY, wallHeight);
 		}
 		/* deselect cart */
@@ -4885,9 +4911,13 @@ bitSet(PORTF, 1);
 	drawing_start = millis();
 #endif
 		/* handle sprites for this ray */
-		handleSprites(rayLength, playerFOVLeftAngle, re);
+		handleSprites(rayLength, playerFOVLeftAngle);
 #ifdef CONFIG_FPS_MEASUREMENT
 	drawing = millis() - drawing_start;
+#endif
+#ifdef RAY32_DEBUG
+		if (ray == 32)
+			memset(es.screenColumn, 0xff, 8);
 #endif
 
 		/* copy current screen column into next column */

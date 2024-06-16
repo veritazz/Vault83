@@ -1,3 +1,6 @@
+;
+; vim: syntax=avr
+;
 #include "drawing.h"
 #include "asm_offsets.h"
 
@@ -192,26 +195,26 @@ drawAll:
 	mov r20, r26          ; (1) wh = a, r21 don't care
 
 1:
-
+; TODO stencilbuffer is screenColumn+8
 	; buffer = es.screenColumn + nScreenY / 8;
-	ldi r26, lo8(es + offsetof_engineState_screenColumn)    ; (2)
-	ldi r27, hi8(es + offsetof_engineState_screenColumn)    ; (2)
+	ldi r30, lo8(es + offsetof_engineState_screenColumn)    ; (2)
+	ldi r31, hi8(es + offsetof_engineState_screenColumn)    ; (2)
 	mov r0, r24           ; (1) r0 = nScreenY
 	lsr r0                ; (1) nScreenY / 8
 	lsr r0                ; (1) ...
 	lsr r0                ; (1) ...
-	add r26, r0           ; (1)
+	add r30, r0           ; (1)
 			      ; adc not required as screenColumn is aligned to an 8 byte boundary
 
 
 	; /* bit position on the screen */
 	; bit = bitshift_left[nScreenY % 8];
-	ldi r30, lo8(bitshift_left)   ; (2)
-	ldi r31, hi8(bitshift_left)   ; (2)
+	ldi r26, lo8(bitshift_left)   ; (2)
+	ldi r27, hi8(bitshift_left)   ; (2)
 	mov r25, r24          ; (1) move nScreenY to r25
 	andi r25, 0x07        ; (1) nScreenY % 8
-	add r30, r25          ; (1) bitshift_left + (nScreenY % 8), no adc required (aligend to 8 byte)
-	ld r13, Z             ; (2) load from (bitshift_left + (nScreenY % 8))
+	add r26, r25          ; (1) bitshift_left + (nScreenY % 8), no adc required (aligend to 8 byte)
+	ld r13, X             ; (2) load from (bitshift_left + (nScreenY % 8))
 			      ;     r13 = bit
 
 	mov r25, r17          ; (1) texOffsetOld = hi8(texY) & 0xc0
@@ -239,6 +242,12 @@ drawAll:
 	; while (wallHeight--)
 	; ...
 1:
+;
+; check if stencilbuffer at r13 is clear
+;
+ldd r26, Z+8
+and r26, r13
+brne 3f
 	; /* bit position on the texture */
 	; uint8_t bit_pos = (texY >> TEXTURE_SCALE_SHIFT) % 8;
 	mov r21, r17          ; (1) r21 = hi8(texY)
@@ -246,11 +255,11 @@ drawAll:
 	swap r21              ; (1) ...
 	andi r21, 0x7         ; (1) ... (r21 is bit_pos)
 	; /* read texture bit and check texColumn for this bit */
-	ldi r30, lo8(bitshift_left)  ; (2) r31 (hi8(bitshift_left) is still valid
-	add r30, r21          ; (1) add bit_pos (adc not required as bitshift_left is aligned to 8 byte)
-	ld r30, Z             ; (2) bitshift_left[bit_pos]
-	mov r21, r30          ; (1)
-	and r30, r12          ; (1) mask & bitshift_left[bit_pos]
+	ldi r26, lo8(bitshift_left)  ; (2) r27 (hi8(bitshift_left) is still valid
+	add r26, r21          ; (1) add bit_pos (adc not required as bitshift_left is aligned to 8 byte)
+	ld r26, X             ; (2) bitshift_left[bit_pos]
+	mov r21, r26          ; (1)
+	and r26, r12          ; (1) mask & bitshift_left[bit_pos]
 	breq 3f               ; (1/2) skip if mask says no
 	and r21, r0           ; (1) texColumn & bitshift_left[bit_pos]
 	breq 2f               ; (1/2) if zero (black)
@@ -260,11 +269,17 @@ drawAll:
 3:
 	lsl r13               ; (1) bit <<= 1
 	brne  4f              ; (1/2) branch if not zero (still a bit set) TODO optimize for not jumping
-	ld r30, X             ; (2) *buffer
+; also update the stencil buffer
+ldd r26, Z+8
+or r26, r18
+or r26, r19
+std Z+8, r26
+
+	ld r26, Z             ; (2) *buffer
 	com r18               ; (1) ~mask
-	and r30, r18          ; (1) *buffer & ~mask
-	or r30, r19           ; (1) *buffer++ | v
-	st X+, r30            ; (2) ...
+	and r26, r18          ; (1) *buffer & ~mask
+	or r26, r19           ; (1) *buffer++ | v
+	st Z+, r26            ; (2) ...
 	eor r18, r18          ; (1) mask = 0
 	eor r19, r19          ; (1) v = 0
 	inc r13               ; (1) bit = 1
@@ -284,14 +299,14 @@ drawAll:
 	;	texColumn = texturePtr[texOffset];
 	; }
 	; compare the higher 2 bits of hi8(texY) and texOffsetOld (shift is 11+3, so only the upper 2 bits count)
-	mov r30, r17          ; (1) r30 = hi8(texY)
-	andi r30, 0xc0        ; (1) r30 &= 0xc0
-	cp r30, r25           ; (1) compare texY (high) and texOffsetOld
+	mov r26, r17          ; (1) r26 = hi8(texY)
+	andi r26, 0xc0        ; (1) r26 &= 0xc0
+	cp r26, r25           ; (1) compare texY (high) and texOffsetOld
 	breq  5f              ; (1/2) if equal, texColumn is still ok  TODO optimize for not jumping
 			      ;       else new texColumn needs to be loaded
-	mov r0, r30           ; (1) r0 = hi8(texY) & 0xc0
+	mov r0, r26           ; (1) r0 = hi8(texY) & 0xc0
 	sub r0, r25           ; (1) sub texOffsetOld from r0
-	mov r25, r30          ; (1) texOffsetOld = hi8(texY)
+	mov r25, r26          ; (1) texOffsetOld = hi8(texY)
 	swap r0               ; (1) r0 >>= 6
 	lsr r0                ; (1) ...
 	lsr r0                ; (1) r0 = texOffset
@@ -306,11 +321,17 @@ drawAll:
 	; ------------------------------------------
 
 	; /* draw remaining pixels if any */
-	ld r30, X             ; (2) *buffer
+; also update the stencil buffer
+ldd r26, Z+8
+or r26, r18
+or r26, r19
+std Z+8, r26
+
+	ld r26, Z             ; (2) *buffer
 	com r18               ; (1) ~mask
-	and r30, r18          ; (1) *buffer & ~mask
-	or r30, r19           ; (1) *buffer++ | v
-	st X, r30             ; (2) ...
+	and r26, r18          ; (1) *buffer & ~mask
+	or r26, r19           ; (1) *buffer++ | v
+	st Z, r26             ; (2) ...
 
 	pop r29               ; (2)
 	pop r28               ; (2)

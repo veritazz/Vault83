@@ -218,7 +218,7 @@ private:
 	uint8_t simulateButtons(uint8_t);
 
 	void updateSprites(int16_t screenYStart, uint16_t fovLeft, uint16_t maxRayLength);
-	void handleSprites(uint16_t rayLength, uint16_t fovLeft, struct renderInfo *re);
+	void handleSprites(uint16_t rayLength, uint16_t fovLeft);
 
 	uint8_t setVMWFlags(uint8_t block, struct movingWall *cmw, uint8_t mapX, uint8_t mapY);
 	void updateMoveables(void);

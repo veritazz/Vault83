@@ -19,7 +19,7 @@
 /*
  * need to add exitToBootloader when using the below macro
  */
-ARDUBOY_NO_USB;
+//ARDUBOY_NO_USB;
 
 Arduboy2Ex arduboy;
 Engine engine(arduboy);
