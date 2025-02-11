@@ -366,7 +366,7 @@ uint8_t Engine::bitreverseU8(uint8_t byte)
 void Engine::findAndActivateDoor(void)
 {
 	struct door *d = &es.ld.doors[0];
-	for (uint8_t door = 0; door < MAX_DOORS; door++) {
+	for (uint8_t door = 0; door < es.ld.nr_of_doors; door++) {
 		if (d == es.cd) {
 			activateDoor(d, door);
 			/* done */
@@ -493,7 +493,7 @@ void Engine::activateTrigger(uint8_t mapX, uint8_t mapY)
 {
 	struct trigger *t = &es.ld.triggers[0];
 
-	for (uint8_t trigger = 0; trigger < MAX_TRIGGERS; trigger++) {
+	for (uint8_t trigger = 0; trigger < es.ld.nr_of_triggers; trigger++) {
 		if (t->timeout == 0 && t->mapX == mapX && t->mapY == mapY) {
 			uint8_t old_state;
 
@@ -1210,7 +1210,7 @@ void Engine::updateTriggers(void)
 	 */
 	struct trigger *t = &es.ld.triggers[0];
 
-	for (uint8_t trigger = 0; trigger < MAX_TRIGGERS; trigger++) {
+	for (uint8_t trigger = 0; trigger < es.ld.nr_of_triggers; trigger++) {
 
 		/* decrement timeout */
 		if (t->timeout) {
@@ -1281,7 +1281,7 @@ void Engine::updateDoors(void)
 	uint8_t maxNrOfActiveFlakyDoors = MAX_NR_OF_FLAKY_DOORS_TO_ACTIVATE;
 	if ((es.randomNumber & 0x3) == 0) {
 		struct door *d = &es.ld.doors[0];
-		for (uint8_t door = 0; door < MAX_DOORS; door++) {
+		for (uint8_t door = 0; door < es.ld.nr_of_doors; door++) {
 			if (d->flags & DOOR_FLAG_FLAKY && d->state == DOOR_CLOSED) {
 				d->state = DOOR_OPENING;
 				/*
@@ -1545,7 +1545,7 @@ void Engine::update(void)
 
 	uint8_t tile = checkIgnoreBlock(es.ld.playerMapX, es.ld.playerMapY);
 	if (tile == FLOOR_TRIGGER) {
-		struct trigger *t = &es.ld.triggers[MAX_TRIGGERS - 1];
+		struct trigger *t = &es.ld.triggers[es.ld.nr_of_triggers - 1];
 
 		/* floor triggers are sorted to the end of the triggers array */
 		for (;;) {
@@ -1731,7 +1731,7 @@ void Engine::updateMoveables(void)
 	/*
 	 * update moving walls
 	 */
-	for (uint8_t mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+	for (uint8_t mwi = 0; mwi < es.ld.nr_of_moving_walls; mwi++) {
 		struct movingWall *mw = &es.ld.movingWalls[mwi];
 		uint8_t flags = mw->flags;
 
@@ -2120,7 +2120,7 @@ uint8_t Engine::checkIgnoreBlockInnerVertical(uint8_t pMapX, uint8_t pMapY, uint
 	uint8_t mwi;
 
 	/* find the moving wall tile the player is in */
-	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+	for (mwi = 0; mwi < es.ld.nr_of_moving_walls; mwi++) {
 
 		mw = &es.ld.movingWalls[mwi];
 
@@ -2167,7 +2167,7 @@ uint8_t Engine::checkIgnoreBlockInnerVertical(uint8_t pMapX, uint8_t pMapY, uint
 	}
 
 	/* nothing found */
-	if (mwi == MAX_MOVING_WALLS)
+	if (mwi == es.ld.nr_of_moving_walls)
 		return F0;
 
 	/* check if ray hits the wall */
@@ -2217,7 +2217,7 @@ uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, ui
 	uint8_t mwi;
 
 	/* find the moving wall tile the player is in */
-	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+	for (mwi = 0; mwi < es.ld.nr_of_moving_walls; mwi++) {
 
 		mw = &es.ld.movingWalls[mwi];
 
@@ -2264,7 +2264,7 @@ uint8_t Engine::checkIgnoreBlockInnerHorizontal(uint8_t pMapX, uint8_t pMapY, ui
 	}
 
 	/* nothing found */
-	if (mwi == MAX_MOVING_WALLS)
+	if (mwi == es.ld.nr_of_moving_walls)
 		return F0;
 
 	/* check if ray hits the wall */
@@ -2304,7 +2304,7 @@ uint8_t Engine::checkIfMovingWallHit(uint8_t mapX, uint8_t mapY, uint16_t hX, ui
 	uint8_t block2;
 
 	tile = F0;
-	for (uint8_t mwi = 0; mwi < MAX_MOVING_WALLS; mwi++) {
+	for (uint8_t mwi = 0; mwi < es.ld.nr_of_moving_walls; mwi++) {
 		uint8_t blockY;
 
 		mw = &es.ld.movingWalls[mwi];
@@ -2536,7 +2536,7 @@ uint8_t Engine::checkIgnoreBlockFast(uint8_t mapX, uint8_t mapY)
 		tile = checkIfDoorToBeIgnored(mapX, mapY);
 
 	} else if (tile == TRIGGER) {
-		for (uint8_t t = 0; t < MAX_TRIGGERS; t++) {
+		for (uint8_t t = 0; t < es.ld.nr_of_triggers; t++) {
 			struct trigger *trig = &es.ld.triggers[t];
 			if (trig->mapX == mapX && trig->mapY == mapY) {
 				es.ct = trig;
@@ -2594,7 +2594,7 @@ uint8_t Engine::checkIfDoorToBeIgnored(uint8_t mapX, uint8_t mapY)
 	uint8_t door;
 
 	/* find the door at mapX/mapY */
-	for (door = 0; door < MAX_DOORS; door++) {
+	for (door = 0; door < es.ld.nr_of_doors; door++) {
 		struct door *d = &es.ld.doors[door];
 		if (d->mapX == mapX && d->mapY == mapY) {
 
@@ -2647,7 +2647,7 @@ uint8_t Engine::checkSolidBlockCheap(uint8_t mapX, uint8_t mapY)
 	mw = &es.ld.movingWalls[0];
 
 	/* find the moving wall tile the player is in */
-	for (mwi = 0; mwi < MAX_MOVING_WALLS; mwi++, mw++) {
+	for (mwi = 0; mwi < es.ld.nr_of_moving_walls; mwi++, mw++) {
 
 		if (mw->flags & (1 << 3)) {
 			if (mapY != mw->mapY)

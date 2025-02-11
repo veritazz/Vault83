@@ -164,8 +164,12 @@ struct level_initdata {
 	uint8_t dynamic_sprite_flags[MAX_SPRITES]; /* flags for sprites that have modifyable parameters, e.g. health */
 	uint8_t static_sprites[MAX_STATIC_SPRITES]; /* static sprite flags */
 
-	uint8_t nr_of_sprites;              /* number of non static sprites */
-	uint8_t maxSpecialWalls;            /* number of special walls */
+	uint8_t nr_of_sprites;              /* number of non static sprites in the level */
+	uint8_t nr_of_doors;                /* number of doors in the level */
+	uint8_t nr_of_moving_walls;         /* number of moving walls in the level */
+	uint8_t nr_of_triggers;             /* number of triggers in the level */
+	uint8_t nr_of_quests;               /* number of quests in the level */
+	uint8_t maxSpecialWalls;            /* number of special walls in the level */
 
 	uint16_t playerX;                   /* players x coordinate in pixel */
 	uint16_t playerY;                   /* players y coordinate in pixel */

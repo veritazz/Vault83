@@ -1,100 +1,263 @@
-##|T |T |T |##|T |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |  |#7|E |  |  |VE|  |VE|  |##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
-#1|  |FT|  |D |E |  |  |v |VE|v |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
-##|  |  |I |#7|E |  |  |v |v |v |  |##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
-##|#7|D |#7|##|##|##|  |VS|VS|v |  |##|##|~4|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |E |S#|E |HS|v |v |HE|VS|  |  |  |  |  |##|  |##|  |  |  |  |  |##|  |  |  |  |  |  |##
-##|  |  |E |  |E |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |##|  |  |  |S |  |  |  |  |##
-##|  |  |E |##|E |  |  |  |  |  |  |  |  |  |  |  |##|  |##|  |  |  |  |##|  |  |  |  |  |  |##
-##|  |  |E |#1|E |  |P |  |  |  |##|##|#1|D |#1|~6|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |E |~1|E |  |  |  |  |  |##|  |  |  |  |  |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |E |##|E |E |E |  |  |  |  |  |  |  |  |  |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |##|##|##|##|##|##|##|##|##|  |  |  |  |  |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |##|##|##|##|##|##|##|##|##|##|##|##
-##|  |  |##|##|##|##|##|  |  |##|  |  |  |  |  |  |  |  |  |  |  |VE|##|##|##|##|##|##|##|##|##
-##|  |  |##|##|##|##|##|  |  |##|  |  |  |  |  |##|##|##|##|  |  |v |##|##|##|##|##|##|##|##|##
-##|  |  |##|##|##|##|##|  |  |##|I |I |I |I |I |##|  |  |##|##|##|v |##|##|##|##|##|##|##|##|##
-##|  |  |  |  |  |  |  |  |  |##|I |I |I |I |I |##|  |  |  |##|##|v |##|##|##|##|##|##|##|##|##
-##|  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |##|  |  |  |##|##|v |##|##|##|##|##|##|##|##|##
-##|  |  |##|  |  |  |##|  |  |##|##|##|##|##|##|##|##|##|  |##|  |v |##|##|  |  |  |  |  |  |##
-##|  |  |##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |##|##|v |##|##|  |  |  |  |  |  |##
-##|  |  |##|  |  |##|##|  |  |  |  |  |  |  |  |  |  |  |  |##|##|v |##|##|  |  |  |  |  |  |##
-##|  |  |##|##|  |##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|v |  |##|  |  |  |  |  |  |##
-##|  |  |##|##|##|##|  |  |  |##|  |  |  |  |  |  |  |  |  |  |##|v |##|##|  |  |  |  |  |  |##
-##|  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|v |##|##|  |  |  |  |  |  |##
-##|  |  |##|  |  |  |  |  |  |##|##|##|##|##|##|##|##|##|  |  |##|v |##|##|  |  |  |  |  |  |##
-##|  |  |S#|  |  |  |  |  |  |##|  |  |  |##|##|##|##|##|  |  |##|v |##|##|  |  |  |  |  |  |##
-S#|  |  |  |  |  |  |  |  |  |##|  |##|##|##|##|##|##|##|  |  |##|VS|  |  |  |  |  |  |  |  |##
-##|S#|##|##|  |  |  |##|  |  |##|  |  |  |  |  |  |  |  |  |  |##|##|##|##|##|##|##|##|  |##|##
-##|  |  |##|  |##|  |##|  |  |##|  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |##|  |  |  |##
-##|  |  |##|  |  |  |##|  |  |##|  |  |##|##|##|##|##|##|##|##|##|  |  |  |  |  |  |  |  |##|##
-##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
+#--------------------------------------------------------------------------------------------------
+# Map
+#
+# x/y|00|01|02|03|04|05|06|07|08|09|10|11|12|13|14|15|16|17|18|19|20|21|22|23|24|25|26|27|28|29|30|31
+# ---------------------------------------------------------------------------------------------------
+00|   ##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
+01|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+02|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+03|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+04|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+05|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+06|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+07|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+08|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+09|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+10|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+11|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+12|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+13|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+14|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |##|##|##|##|##|  |  |  |  |  |  |  |  |  |  |  |  |##
+15|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  | D|  |  |  | D|  |  |  |  |  |  |  |  |  |  |  |  |##
+16|   ##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|  | P|  |##|##|##|##|##|##|##|##|##|##|##|##|##|##
+17|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  | D|  |  |  | D|  |  |  |  |  |VS|  |VE|  |VS|  |  |##
+18|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |##|##|##|##|##|  |  |  |  |  |  |  |  |  |  |  |  |##
+19|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+20|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|HS|  |  |  |  |  |HE|  |  |  |  |  |  |  |##
+21|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  | S|##
+22|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|HE|  |  |  |  |  |HS|  |  |  |  |  |  | S|##
+23|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+24|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|HS|  |  |  |  |  |HE|  |  |  |  |  |  | I|##
+25|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+26|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|HE|  |  |  |  |  |HS|  |  |  |  |  |  | S|##
+27|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  | S|##
+28|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|HS|  |  |  |  |  |HE|  |  |  |  |  |  |  |##
+29|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |##
+30|   ##|  |  |  |  |  |  |  |  |  |  |  |  |  |  |  |##|  |  | I| I| I|  |  |VE|  |VS|  |VE|  |  |##
+31|   ##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##|##
 
+#--------------------------------------------------------------------------------------------------
+# Doors
+#
+# They can be placed only between walls and not next to each other. Placing them in the map above
+# is mandatory and will be checked by the map generation tool against the x/y coordinates
+# specified in the table.
+#
+# <id>:      ID of the door. Used for bookkeeping and to be referenced from other objects.
+#            Numbering starts at 0 and must be lower than the maximum allowed door count.
+# <x>:       The x coordinate of the door on the map.
+# <y>:       The y coordinate of the door on the map.
+# <locked>:  The locked status of the door. If locked the player needs a key to open it.
+#            locked = yes, unlocked = no
+# <trigger>: The door can only be opened by using the trigger that references the door.
+#            trigger_required = yes, no_trigger_required = no
+# <flaky>:   The door is flaky and open/closes partially randomly.
+#            flaky = yes, normal = no
+# <blockId>: The block number that describes the textures of the door. Value from 0 to 30.
+#
+#  D<id> <x> <y> <locked> <trigger> <flaky> <blockId>
+#--------------------------------------------------------------------------------------------------
+    D0   14  15     no       no        no       7
+    D1   14  17     no       no        no       7
+    D2   18  15     no       no        no       7
+    D3   18  17     no       no        no       4
 
-
-# Doors (D<id> <locked> <trigger> <flaky> <blockId>
-D0 no  no yes 7
-D1 no  no no  7
-D2 no  no no  7
-
+#--------------------------------------------------------------------------------------------------
 # Triggers
-# oneshot = can be switched on/off once, will not reset after timeout
-# switch  = can be switched on/off, will reset to the opposite state after timeout
-# touch   = can be switched on/off, will reset immediately without timeout
-# floor   = switches on/off when the player moves onto the floor tile, never resets
-# T<id> <state>   <type>      <obj type>   <obj id> <blockId>
-   T0     OFF    ONESHOT          WALL          3      14
-   T1     OFF     SWITCH         QUEST          1      14
-   T2     OFF      FLOOR        DIALOG          1       1
-   T3     OFF    ONESHOT    NEXT_LEVEL        255      14
-   T4     OFF      TOUCH          MENU          1       1
+#
+# Triggers can trigger events like open/close doors, open a hidden wall, start moving walls etc.
+# They can be either visible on walls so the player can approach them or invisible ones that
+# trigger when the player walks over them.
+#
+# <id>:       ID of the trigger. Used for bookkeeping only. Numbering starts at 0 and must be
+#             lower than the maximum allowed trigger count.
+# <x>:        The x coordinate of the trigger on the map.
+# <y>:        The y coordinate of the trigger on the map.
+# <state>:    The initial state of the trigger. Can be either on or off.
+# <type>:     The type of the trigger It can be either:
+#               oneshot = can be switched on/off once, will not reset after timeout
+#               switch  = can be switched on/off, will reset to the opposite state after timeout
+#               touch   = can be switched on/off, will reset immediately without timeout
+#               floor   = switches on/off when the player moves onto the floor tile, never resets
+# <obj_type>: The type of the object that is triggered by the trigger. It can be either:
+#               door       = The trigger will open or close a door.
+#               wall       = The trigger will start or stop a moving wall.
+#               dialog     = The trigger will open a dialog.
+#               next_level = The trigger will start the next level or the level given by obj_id.
+#               quest      = The trigger will start a new quest.
+#               menu       = The trigger will open the main menu.
+# <obj_id>:   The ID of the object the trigger will affect. It needs to be a valid ID of an object
+#             of type obj_type. In case of:
+#               dialog = the ID is the number of the dialog to show. The ID can be taken from the
+#                        dialog section of the flash layout file.
+#               next_level = the level number to jump to or 255 to just start the next level
+#               quest = the ID of the quest to start
+#               menu = do not care
+# <blockId>:  The ID of the wall block used for rendering a texture.
+#
+# T<id> <x> <y> <state>   <type>      <obj_type>   <obj_id> <blockId>
+#--------------------------------------------------------------------------------------------------
+#   T0    1   0    off    oneshot          wall          3      14
+#   T1    2   0    off     switch         quest          1      14
+#   T2    2   2    off      floor        dialog          1       1
+#   T3    3   0    off    oneshot    next_level        255      14
+#   T4    5   0    off      touch          menu          1       1
+#   T0   15  13    off      floor        dialog          1       1
+none
 
+
+#--------------------------------------------------------------------------------------------------
 # Moving Walls
-# V<id> <damage> <active> <oneshot> <speed> <blockId> <pushwall>
-   V0      no       no       yes       2        0         yes
-   V1      no      yes        no       2        3          no
-   V2      no      yes        no       2        2          no
-   V3     yes       no        no       2        1          no
-   H0      no      yes        no       0        3          no
+#
+# Moving walls are a special kind of wall block which can move either in vertical or horizontal
+# direction. They can move at different speed, do damage and get activated by the player.
+#
+# V/H<id>:    The ID of the moving wall. Preceed it with H for a horizontally moving wall and with V
+#             for a vertically moving wall. It is used for bookkeeping and for reference in
+#             combination with triggers.
+# <x>:        The x coordinate of the start of the moving wall on the map.
+# <y>:        The y coordinate of the start of the moving wall on the map.
+# <end>:      The end coordinate of the moving wall on the map. This is either an x coordinate
+#             for horizontally moving walls or an y coordinate for vertically moving walls.
+# <damage>:   If set to yes the wall will do damage to the player if touched. If set to no the wall
+#             moving wall will do no damage.
+# <active>:   If set to yes the wall will be moving instantly. If set to no it needs to be activated
+#             by the player.
+# <oneshot>:  If set to yes the moving wall will only move once from its start position to its end
+#             position.
+# <speed>:    The speed of the moving wall. The value can be from 0 to 3. The higher the value the
+#             faster the wall moves.
+# <blockId>:  The ID of the wall block used for rendering a texture.
+# <pushwall>: If set to yes, this wall can be activated/deactivated by triggering it by the
+#             player (e.g. the wall will act as a trigger that the player can activate).
+#           
+#
+# V/H<id> <x> <y> <end> <damage> <active> <oneshot> <speed> <blockId> <pushwall>
+#--------------------------------------------------------------------------------------------------
+   V0   24  17   30      no      yes        no       2        0          no
+   V1   26  30   17      no      yes        no       2        3          no
+   V2   28  17   30      no      yes        no       2        2          no
+   H0   17  20   23      no      yes        no       2        3          no
+   H1   23  22   17      no      yes        no       4        3          no
+   H2   17  24   23      no      yes        no       2        3          no
+   H3   23  26   17      no      yes        no       4        3          no
+   H4   17  28   23      no      yes        no       2        3          no
 
-# Sprites (S<id> <type> <version> <voffset> <health> <flags>)
-S0  I  0  8   0   0
-S1  E  0 -4  10   0
-S2  E  0 -4  10   0
-S3  E  0 -8  10   0
-S4  E  0  4  10   0
-S5  E  0  4  10   0
-S6  E  0 -3  10   0
-S7  E  0 -3  10   0
-S8  E  0 -3  10   0
-S9  E  0 -3  10   0
-S10 E  0 -3  10   0
-S11 E  0 -3  10   0
-S12 E  0 -3  10   0
-S13 E  0 -3  10   0
-S14 E  0 -3  10   0
-S15 E  0 -3  10   0
-S16 E  0 -3  10   0
-S17 E  0 -3  10   0
-S18 I  4  8   0   0
-S19 I  1  8   0   0
-S20 I  4  8   0   0
-S21 I  1  8   0   0
-S22 I  4  8   0   0
-S23 I  1  8   0   0
-S24 I  4  8   0   0
-S25 I  1  8   0   0
-S26 I  4  8   0   0
-S27 I  1  8   0   0
-S28 S 14  8   0   0
+#--------------------------------------------------------------------------------------------------
+# Sprites
+#
+# Sprites can be either static or dynamic. Static sprites do not move and can be either collected
+# or are just used to make the level more appealing. Some of the static sprites can also be
+# destroyed by the player (e.g. barrel). Dynamic sprites can move around, eventually attack and
+# follow the player and be destroyed/killed by the player.
+#
+# S<id>:      The ID of the sprite. It is used for bookkeeping only for now.
+# <x>:        The x coordinate of the sprite on the map.
+# <y>:        The y coordinate of the sprite on the map.
+# <family>:   The family of the sprite. There are 3 families, E for enemies (dynamic sprite),
+#             I for items (static sprites) and S for decorative sprites (static sprites).
+# <type>:     The type within the family of sprites. Determines the graphics.
+# <health>:   The health of the sprite. The value can be from 0 to 255. In case of S family
+#             sprites the sprite becomes destroyable if the health value is bigger than 0.
+# <flags>:    Not used for now. Set it to zero.
+#
+# S<id> <x> <y> <family> <type> <health> <flags>
+#--------------------------------------------------------------------------------------------------
+#   S0    3   3     I        0      0        0
+#   S1    3   5     E        0     10        0
+#   S2    3   6     E        0     10        0
+#   S3    3   7     E        0     10        0
+#   S4    3   8     E        0     10        0
+#   S5    3   9     E        0     10        0
+#   S6    3  10     E        0     10        0
+#   S7    5   1     E        0     10        0
+#   S8    5   2     E        0     10        0
+#   S9    5   3     E        0     10        0
+#   S10   5   5     E        0     10        0
+#   S11   5   6     E        0     10        0
+#   S12   5   7     E        0     10        0
+#   S13   5   8     E        0     10        0
+#   S14   5   9     E        0     10        0
+#   S15   5  10     E        0     10        0
+#   S16   6  10     E        0     10        0
+#   S17   7  10     E        0     10        0
+#   S18  11  16     I        4      0        0
+#   S19  11  17     I        1      0        0
+#   S20  12  16     I        4      0        0
+#   S21  12  17     I        1      0        0
+#   S22  13  16     I        4      0        0
+#   S23  13  17     I        1      0        0
+#   S24  14  16     I        4      0        0
+#   S25  14  17     I        1      0        0
+#   S26  15  16     I        4      0        0
+#   S27  15  17     I        1      0        0
+#   S28  26   6     S       14      0        0
+    S0   19  30     I        4      0        0
+    S1   20  30     I        4      0        0
+    S2   21  30     I        4      0        0
+    S3   30  21     I        4      0        0
+    S4   30  22     I        4      0        0
+    S5   30  24     S       14      0        0
+    S6   30  26     I        4      0        0
+    S7   30  27     I        4      0        0
 
-# Quests (enemy type counters, sprite type counters, item type counters, event type counters)
-Q0             0 0 0 0                  0 0              0 0 0 0           0 0 0 0 0 0 0 0
 
-# Special Walls (W<id> <direction> <projectile id>)
-W0 SHOOT_RIGHT 1
-W1 SHOOT_UP    2
-W2 SHOOT_LEFT  3
-W3 SHOOT_LEFT  4
+#--------------------------------------------------------------------------------------------------
+# Quests
+#
+#  Q<id>, enemy type counters, sprite type counters, item type counters, event type counters)
+#   Q0          0 0 0 0                  0 0              0 0 0 0           0 0 0 0 0 0 0 0
+none
 
+#--------------------------------------------------------------------------------------------------
+# Special Walls
+#
+# W<id> <x> <y> <direction> <projectile id>)
+#   W0    0  27  SHOOT_RIGHT        1
+#   W1    1  28     SHOOT_UP        2
+#   W2    3  26   SHOOT_LEFT        3
+#   W3    5   5   SHOOT_LEFT        4
+#   W0    0  27  SHOOT_RIGHT        1
+none
+
+#--------------------------------------------------------------------------------------------------
+# Legend
+#
+# ID numbering:
+#    <wid>: The ID of a wall block. Valid IDs are #,1,2,3,4,5,6,7,8,9,a,b,c,d,e,f,g,h,i,j,k,l,m,n,o,p,q,r,s,t,u
+#           For half walls u is not a valid ID.
+#
+# Map elements:
+#   #<wid>: A normal static wall block with textured sides. The <wid> defines which textures are
+#           used on the block sides.
+#   ~<wid>: A static wall block with textured sides that is displayed as half the size. The effect is that the block
+#           looks as if is a little bit pushed inside compared to other blocks. Need a normal block
+#           at each side TODO?. The <wid> defines which textures are used on the block sides.
+#   S<wid>: A special static wall with textured sides that can shoot. The <wid> defines which textures are used on the block sides.
+#   s<wid>: A special static wall with textured sides that is displayed as half the size and can shoot.
+#           The <wid> defines which textures are used on the block sides.
+#        T: Defines a trigger in the map. The trigger will be rendered as a normal wall block.
+#           Details for this trigger are defined in the trigger section.
+#        D: Defines a door in the map. The door will be rendered as a half block. Details for this door are defined in the door section.
+#       VS: Defines the start of a vertically moving wall. Start and end of a moving wall need to be on the same horizontal line on the map.
+#           Details for this wall are defined in the moving walls section.
+#       VE: Defines the end of a vertically moving wall. Start and end of a moving wall need to be on the same horizontal line on the map.
+#           Details for this wall are defined in the moving walls section.
+#       HS: Defines the start of a vertically moving wall. Start and end of a moving wall need to be on the same horizontal line on the map.
+#           Details for this wall are defined in the moving walls section.
+#       HE: Defines the end of a vertically moving wall. Start and end of a moving wall need to be on the same horizontal line on the map.
+#           Details for this wall are defined in the moving walls section.
+#        v: Defines the path between start and end of moving walls. The path is optional. The map generator will add it automatically.
+#        P: Defines the initial players position.
+#        S: Defines a static sprite that can be destroyed or not destroyed. The sprite is not moveable and not collectable.
+#           Placing them on the map is not mandatory and only required for better imagination of the map.
+#           They can also just defined with the sprites section.
+#           Details are defined in the sprites section.
+#        E: Defines an enemy sprite that can be killed. Placing them on the map is not mandatory and only required for better imagination of
+#           the map. They can also just defined with the sprites section.
+#           Details are defined in the sprites section.
+#        I: Defines a static sprite that can be collected. Placing them on the map is not mandatory and only required for better imagination of
+#           the map. They can also just defined with the sprites section.
+#           Details are defined in the sprites section.
+#       FT: Defines a floor trigger in the map. This is a trigger that is not visible by the player.
+#           Details for this trigger are defined in the trigger section.

@@ -243,3 +243,6 @@
 #           Details are defined in the sprites section.
 #       FT: Defines a floor trigger in the map. This is a trigger that is not visible by the player.
 #           Details for this trigger are defined in the trigger section.
+
+
+
