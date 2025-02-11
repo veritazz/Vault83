@@ -4797,7 +4797,7 @@ memset(es.screenColumn, 0, 8);
 			 *
 			 * (clear half block indicator bit)
 			 */
-			block_id = (tile & 0x1f) - 1; //(0x1f & ~HALF_BLOCKS_START)) - 1;
+			block_id = (tile & (HALF_BLOCKS_START - 1)) - 1;
 		}
 		uint8_t textureIndex = blockTextures[block_id * 4 + side] + textureIndexOffset;
 
