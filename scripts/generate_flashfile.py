@@ -125,6 +125,8 @@ if __name__ == "__main__":
 					flashOffset += padOrAlign(outputBinFile, options, "pad", flashOffset, pageSize)
 
 					try:
+						# if "txtFileName" is given, interpret it as number of bytes to
+						# reserve and initialize to zero
 						size = int(txtFileName, 0)
 						flashOffset += size
 						outputBinFile.write(struct.pack('<B', 0) * size)

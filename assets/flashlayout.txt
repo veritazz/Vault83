@@ -149,4 +149,6 @@ level2_specialWalls.bin,, pad 128
 rayLengths.bin,,pad
 distances.bin,,pad
 #
+# reserve space for save games and initialize it to zero
+#
 saveGame, 4096,pad
