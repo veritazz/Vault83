@@ -37,3 +37,4 @@
 
 .pioenvs
 src/asm_offsets.h
+data-output/*
