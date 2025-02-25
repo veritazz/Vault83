@@ -78,6 +78,26 @@ texture-wall-8.bin, texture-wall-8.txt, pad 192
 texture-wall-9.bin, texture-wall-9.txt, pad 192
 texture-door-frame.bin, texture-door-frame.txt, pad 192
 texture-door-1.bin, texture-door-1.txt, pad 192
+texture-wall-12.bin, texture-wall-12.txt, pad 192
+texture-wall-13.bin, texture-wall-13.txt, pad 192
+texture-wall-14.bin, texture-wall-14.txt, pad 192
+texture-wall-15.bin, texture-wall-15.txt, pad 192
+texture-wall-16.bin, texture-wall-16.txt, pad 192
+texture-wall-17.bin, texture-wall-17.txt, pad 192
+texture-wall-18.bin, texture-wall-18.txt, pad 192
+texture-wall-19.bin, texture-wall-19.txt, pad 192
+texture-wall-20.bin, texture-wall-20.txt, pad 192
+texture-wall-21.bin, texture-wall-21.txt, pad 192
+texture-wall-22.bin, texture-wall-22.txt, pad 192
+texture-wall-23.bin, texture-wall-23.txt, pad 192
+texture-wall-24.bin, texture-wall-24.txt, pad 192
+texture-wall-25.bin, texture-wall-25.txt, pad 192
+texture-wall-26.bin, texture-wall-26.txt, pad 192
+texture-wall-27.bin, texture-wall-26.txt, pad 192
+texture-wall-28.bin, texture-wall-28.txt, pad 192
+texture-wall-29.bin, texture-wall-29.txt, pad 192
+texture-wall-30.bin, texture-wall-30.txt, pad 192
+texture-wall-31.bin, texture-wall-31.txt, pad 192
 wall32x32.bin, wall32x32.txt,
 wall16x16.bin, wall16x16.txt,
 wall8x8.bin, wall8x8.txt, pad 192
